@@ -20,8 +20,8 @@ import { resolveApiKey, resolveModel } from "../global-config.js";
 import {
   createTUIState, type TUIState, type HintItem,
   STATUS_BAR_HEIGHT, MODE_BAR_HEIGHT, MAX_HINT_LINES, MAX_AUTO_CONTINUE, SCROLL_TOP,
-  STATUS_FRAMES, IMAGE_EXTS,
-  WATCHDOG_IDLE_MS, COMMANDS, PARADIGM_COLORS, PARADIGM_CYCLE, PARADIGM_DESC,
+  IMAGE_EXTS,
+  WATCHDOG_IDLE_MS, COMMANDS, PARADIGM_CYCLE,
 } from "./state.js";
 import {
   sanitizeAssistantText, stopStreamDrain, startStreamDrain, waitForStreamDrain,
@@ -30,6 +30,13 @@ import {
 import {
   sanitizeInputChunk, createInputHandlers, type InputDeps, type InputHandlers,
 } from "./input.js";
+import {
+  fmtTokens, fmtTokensLive, fmtCacheRate, fmtElapsed,
+  tickAnimTokens, getLiveMetrics, getActiveParadigm,
+  drawStatusBar, clearStatusBar, startStatusBar, stopStatusBar,
+  drawModeBar, drawHintPanel,
+  type StatusBarDeps,
+} from "./status-bar.js";
 
 export interface TUIConfig {
   skipGuard?: boolean;
@@ -320,8 +327,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     state.prevHintHeight = curHintH;
 
     write(ansi.saveCursor);
-    drawHintPanel();
-    drawModeBar();
+    drawHintPanel(state, statusBarDeps);
+    drawModeBar(state);
     write(ansi.restoreCursor);
 
     const isCommand = state.inputBuffer.startsWith("/");
@@ -352,115 +359,21 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     state.inputBoxTopRow = Math.max(0, promptBottom - state.inputBoxHeight + 1);
   };
 
-  // ── Hint panel ──
+  // ── Status bar deps (closure-scoped functions used by status-bar.ts) ──
 
-  const drawHintPanel = () => {
-    const matches = getHintMatches();
-    if (matches.length === 0) return;
-
-    if (matches.length !== state.prevHintCount) {
-      state.hintFocus = 0;
-      state.prevHintCount = matches.length;
-    }
-
-    const { rows } = getTermSize();
-    const gap = getMaxInputLines(rows) - state.inputBoxHeight;
-    const hintH = Math.min(MAX_HINT_LINES, gap);
-    if (hintH < 2) return;
-
-    if (state.hintFocus >= matches.length) state.hintFocus = matches.length - 1;
-    if (state.hintFocus < 0) state.hintFocus = 0;
-
-    const needsPaging = matches.length > hintH;
-    const itemsPerPage = needsPaging ? hintH - 1 : hintH;
-    const totalPages = Math.ceil(matches.length / itemsPerPage);
-    const page = Math.floor(state.hintFocus / itemsPerPage);
-    const pageStart = page * itemsPerPage;
-    const pageItems = matches.slice(pageStart, pageStart + itemsPerPage);
-
-    const promptBottom = rows - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1;
-    const inputBoxTop = promptBottom - state.inputBoxHeight + 1;
-    const hintEnd = inputBoxTop - 1;
-    const hintStart = hintEnd - hintH + 1;
-    const scrBot = scrollRegionBottom();
-
-    let r = 0;
-    for (const item of pageItems) {
-      const row = hintStart + r;
-      r++;
-      if (row <= scrBot) continue;
-      const isFocused = (pageStart + pageItems.indexOf(item)) === state.hintFocus;
-      const prefix = isFocused ? color.bold(color.cyan("▶")) : " ";
-      const namePart = isFocused ? color.bold(color.cyan(item.name)) : color.cyan(item.name);
-      const descPart = color.dim(` — ${item.description}`);
-      write(ansi.moveTo(row, 0) + ansi.clearLine + color.dim(` ${prefix} ${namePart}${descPart}`));
-    }
-
-    for (let i = r; i < (needsPaging ? hintH - 1 : hintH); i++) {
-      const row = hintStart + i;
-      if (row > scrBot) write(ansi.moveTo(row, 0) + ansi.clearLine);
-    }
-
-    if (needsPaging) {
-      const navRow = hintStart + hintH - 1;
-      if (navRow > scrBot) {
-        const hasAbove = page > 0;
-        const hasBelow = page < totalPages - 1;
-        const nav = hasAbove
-          ? (hasBelow ? `  ↑ page ${page + 1}/${totalPages}  ↓` : `  ↑ page ${page + 1}/${totalPages}`)
-          : `  ↓ page ${page + 1}/${totalPages}`;
-        write(ansi.moveTo(navRow, 0) + ansi.clearLine + color.dim(nav));
-      }
-    }
+  const statusBarDeps: StatusBarDeps = {
+    scrollRegionBottom,
+    getMaxInputLines,
+    getHintMatches,
   };
 
-  // ── Metrics & Status Bar ──
+  // Wrappers for ResizeDeps (which expects () => void signatures)
+  const drawStatusBarWrapped = () => drawStatusBar(state, statusBarDeps);
 
-  const getLiveMetrics = (): { humanInLoopCount: number } => {
-    try {
-      const engine = new MetricsEngine(workspaceRoot);
-      const report = engine.compute();
-      if (report) return { humanInLoopCount: report.humanInLoopCount };
-    } catch { /* skip */ }
-    return { humanInLoopCount: 0 };
-  };
-
-  const fmtTokens = (n: number): string => n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
-  const fmtTokensLive = (n: number): string => n >= 1000 ? `${(n / 1000).toFixed(3)}K` : String(n);
-  const fmtCacheRate = (cached: number, prompt: number): string => {
-    if (prompt <= 0) return "";
-    return `cache:${Math.round((cached / prompt) * 100)}%`;
-  };
-  const fmtElapsed = (ms: number): string => {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
-
-  const tickAnimTokens = (target: number, targetRate: number) => {
-    const gap = target - state.animTokens;
-    if (gap <= 0) {
-      state.animTokens = target;
-    } else {
-      const range = Math.min(gap, gap > 1000 ? 200 : gap > 100 ? 50 : 10);
-      const step = Math.max(1, Math.floor(Math.random() * range + 1));
-      state.animTokens = Math.min(state.animTokens + step, target);
-    }
-    if (state.animCacheRate < targetRate) {
-      state.animCacheRate = Math.min(state.animCacheRate + 1, targetRate);
-    } else if (state.animCacheRate > targetRate) {
-      state.animCacheRate = targetRate;
-    }
-  };
-
-  const getActiveParadigm = (): Paradigm => {
-    if (state.agent) return state.agent.getParadigmState().active;
-    return state.tuiParadigm;
-  };
+  // ── Paradigm ──
 
   const cycleParadigm = () => {
-    const current = getActiveParadigm();
+    const current = getActiveParadigm(state);
     const idx = PARADIGM_CYCLE.indexOf(current);
     const next = PARADIGM_CYCLE[(idx + 1) % PARADIGM_CYCLE.length]!;
     state.tuiParadigm = next;
@@ -469,150 +382,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       state.agent.setParadigm(next);
       state.agent.rebuildSystemPrompt();
     }
-    drawModeBar();
-  };
-
-  const drawModeBar = () => {
-    const { cols, rows } = getTermSize();
-    const modeBarRow = rows - STATUS_BAR_HEIGHT - 1;
-
-    const active = getActiveParadigm();
-    const c = (PARADIGM_COLORS as any)[active] ?? color.dim;
-    const pc = (s: string) => { const fn = c === "green" ? color.green : c === "magenta" ? color.magenta : c === "yellow" ? color.yellow : color.dim; return fn(s); };
-
-    const desc = PARADIGM_DESC[active] ?? "";
-    const label = active === "appraise" ? "Ask" : active === "ride" ? "Target" : "Modify";
-    const cycleHint = PARADIGM_CYCLE.includes(active) ? " (shift+tab to cycle · ctrl+j to newline)" : "";
-    const thinkingOn = state.agent?.getThinking();
-    const thinkingTag = thinkingOn ? " " + color.yellow("[thinking]") : "";
-    const line = " " + pc(`<${label}>`) + thinkingTag + color.dim(` --${desc}${cycleHint}`);
-
-    write(ansi.moveTo(modeBarRow, 0) + ansi.clearLine + line);
-  };
-
-  const drawStatusBar = () => {
-    const { cols, rows } = getTermSize();
-    const barRow = rows - STATUS_BAR_HEIGHT;
-
-    const sep = color.dim("│");
-    const isDeepSeek = state.agent ? state.agent.getProviderName() === "deepseek" : false;
-
-    if (state.busy) {
-      const spinner = STATUS_FRAMES[state.statusFrameIdx % STATUS_FRAMES.length]!;
-      state.statusFrameIdx++;
-
-      const now = Date.now();
-      const elapsed = state.taskStartTime ? fmtElapsed(now - state.taskStartTime) : "00:00";
-
-      const m = state.lastMetricsSnapshot ?? getLiveMetrics();
-      if (!state.lastMetricsSnapshot) state.lastMetricsSnapshot = m;
-
-      const workingPart = `${spinner} 赤兔工作中 · ${elapsed}`;
-
-      const u = state.agent?.getUsage() ?? state.lastKnownUsage;
-      const liveComp = Math.ceil(state.liveCompletionChars / 4);
-      const liveTotal = state.livePromptChars + liveComp;
-      const target = u?.totalTokens ?? (state.streaming ? liveTotal : state.animTokens);
-      const targetRate = (u && u.promptTokens > 0) ? Math.round((u.cachedTokens / u.promptTokens) * 100) : state.animCacheRate;
-      tickAnimTokens(target, targetRate);
-
-      let tokenSection = "";
-      if (state.streaming || state.animTokens > 0) {
-        const cacheStr = isDeepSeek ? `  cache:${state.animCacheRate}%` : "";
-        tokenSection = `${fmtTokensLive(state.animTokens)} tokens${cacheStr}`;
-      }
-
-      const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
-      const ctxPart = `ctx:${ctxPct}%`;
-      const hitlPart = `HITL:${m.humanInLoopCount}`;
-      const parts = [workingPart, tokenSection, ctxPart, hitlPart].filter(Boolean);
-      const fullLine = parts.join(`  ${sep}  `);
-      const trimmed = vtrunc(fullLine, cols);
-
-      write(ansi.saveCursor);
-      write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-      write(ansi.restoreCursor);
-    } else {
-      const u = state.agent?.getUsage() ?? state.lastKnownUsage;
-      const target = u?.totalTokens ?? 0;
-      const targetRate = (u && u.promptTokens > 0) ? Math.round((u.cachedTokens / u.promptTokens) * 100) : state.animCacheRate;
-      tickAnimTokens(target, targetRate);
-
-      const m = state.lastMetricsSnapshot;
-      const parts: string[] = [];
-      const cacheStr = isDeepSeek ? `  cache:${state.animCacheRate}%` : "";
-      parts.push(`${fmtTokens(state.animTokens)} tokens${cacheStr}`);
-      const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
-      parts.push(`ctx:${ctxPct}%`);
-      if (m) parts.push(`HITL:${m.humanInLoopCount}`);
-      const fullLine = parts.join(`  ${sep}  `);
-      const trimmed = vtrunc(fullLine, cols);
-
-      write(ansi.saveCursor);
-      write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-      write(ansi.restoreCursor);
-    }
-    state.statusBarDrawn = true;
-    state.statusBarTopRow = barRow;
-  };
-
-  const clearStatusBar = () => {
-    if (!state.statusBarDrawn) return;
-    write(ansi.saveCursor);
-    write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine);
-    write(ansi.restoreCursor);
-    state.statusBarDrawn = false;
-  };
-
-  const startStatusBar = () => {
-    state.taskStartTime = Date.now();
-    state.statusFrameIdx = 0;
-    state.lastMetricsSnapshot = null;
-    state.liveCompletionChars = 0;
-    if (state.agent) {
-      let chars = 0;
-      for (const m of state.agent.getMessages()) {
-        chars += (m.content?.length ?? 0) + JSON.stringify(m.tool_calls ?? "").length;
-      }
-      state.livePromptChars = Math.ceil(chars / 4);
-    }
-    state.animCacheRate = 0;
-    drawStatusBar();
-    state.statusInterval = setInterval(() => {
-      if (state.busy && state.statusFrameIdx % 4 === 0) state.lastMetricsSnapshot = getLiveMetrics();
-      clearStatusBar();
-      drawStatusBar();
-    }, 150);
-  };
-
-  const stopStatusBar = () => {
-    if (state.statusInterval) {
-      clearInterval(state.statusInterval);
-      state.statusInterval = null;
-    }
-    const u = state.agent?.getUsage() ?? state.lastKnownUsage;
-    const isDeepSeek = state.agent ? state.agent.getProviderName() === "deepseek" : false;
-    const { cols } = getTermSize();
-    const m = state.lastMetricsSnapshot ?? getLiveMetrics();
-
-    const sep = color.dim("│");
-    const parts: string[] = [];
-
-    if (u && u.totalTokens > 0) {
-      const cacheStr = isDeepSeek ? `  ${fmtCacheRate(u.cachedTokens, u.promptTokens)}` : "";
-      parts.push(`${fmtTokens(u.totalTokens)} tokens${cacheStr}`);
-    }
-
-    const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
-    parts.push(`ctx:${ctxPct}%`);
-    if (m) parts.push(`HITL:${m.humanInLoopCount}`);
-    const fullLine = parts.join(`  ${sep}  `);
-
-    state.statusBarTopRow = getTermSize().rows - STATUS_BAR_HEIGHT;
-    write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)));
-    write(ansi.moveTo(scrollRegionBottom(), 0));
-    state.statusBarDrawn = true;
-    state.taskStartTime = null;
+    drawModeBar(state);
   };
 
   // ── Resize handler ──
@@ -620,7 +390,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   const resizeDeps: ResizeDeps = {
     updateScrollRegion,
     drawPrompt,
-    drawStatusBar,
+    drawStatusBar: drawStatusBarWrapped,
     getTermSize,
     vtrunc,
     fmtTokens,
@@ -647,13 +417,13 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (task === "/clear") {
       clearInputBox();
-      clearStatusBar();
+      clearStatusBar(state);
       state.statusBarDrawn = false;
       write(ansi.clear + ansi.moveTo(0, 0));
       updateScrollRegion();
       redrawBanner(state);
       drawPrompt();
-      drawStatusBar();
+      drawStatusBarWrapped();
       return;
     }
 
@@ -830,7 +600,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (state.agent) {
         const enable = task === "/deepthink on" || (task === "/deepthink" && !state.agent.getThinking());
         state.agent.setThinking(enable);
-        drawModeBar();
+        drawModeBar(state);
         const status = enable ? "启用" : "关闭";
         printAssistantBlock(`深度思考：${status}\n大模型将${enable ? "" : "不"}在回答前进行深度思考。`, scrollRegionBottom);
       } else {
@@ -945,7 +715,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
               state.agent.getMessages().push({ role: "user", content: match.goal });
             }
 
-            drawModeBar();
+            drawModeBar(state);
             printAssistantBlock(
               `已激活计划: ${match.id.slice(5)}\n` +
               `目标: ${match.goal}\n` +
@@ -995,7 +765,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     updateScrollRegion();
     state.streaming = true;
     state.taskAbort = new AbortController();
-    startStatusBar();
+    startStatusBar(state, statusBarDeps);
     drawPrompt(true);
 
     if (!state.session) {
@@ -1204,7 +974,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (watchdogTimer) clearTimeout(watchdogTimer);
       state.streamQueue = "";
       stopStreamDrain(state);
-      stopStatusBar();
+      stopStatusBar(state, statusBarDeps);
       state.busy = false;
       state.streaming = false;
       state.printingAssistant = false;
@@ -1275,7 +1045,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   });
 
   drawPrompt();
-  drawStatusBar();
+  drawStatusBarWrapped();
 
   await new Promise<void>((resolve) => {
     const check = setInterval(() => {
@@ -1296,7 +1066,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (state.agent) state.agent.abort();
 
     stopStreamDrain(state);
-    stopStatusBar();
+    stopStatusBar(state, statusBarDeps);
     state.decoder.end();
     disableRawMode();
     write(ansi.bracketedPasteOff);
