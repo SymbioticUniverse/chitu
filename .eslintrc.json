@@ -1,0 +1,14 @@
+{
+  "env": { "node": true, "es2023": true },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": { "project": "./tsconfig.json", "ecmaVersion": 2023, "sourceType": "module" },
+  "plugins": ["@typescript-eslint"],
+  "extends": ["eslint:recommended"],
+  "rules": {
+    "prefer-const": "error",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-console": "off"
+  },
+  "ignorePatterns": ["dist/", "node_modules/"]
+}

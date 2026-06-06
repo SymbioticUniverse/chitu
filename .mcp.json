@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "horsewhip": {
+      "command": "node",
+      "args": [
+        "/Users/su/.vscode/extensions/horsewhip.horsewhip-3.2.2/media/mcp/dist/index.js"
+      ],
+      "env": {
+        "HORSEWHIP_WORKSPACE": "${CHITU_PROJECT_DIR}",
+        "HORSEWHIP_MCP_VERSION": "3.2.2",
+        "HORSEWHIP_MCP_HASH": "917fe971ea415e6f40ad987b3ec5ce6fa6e047ef7a32bd6abadfc3c7a30da96a"
+      },
+      "alwaysLoad": true
+    }
+  }
+}

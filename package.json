@@ -1,0 +1,52 @@
+{
+  "name": "chitu",
+  "version": "1.0.0",
+  "description": "赤兔 — 约束自涌现终端 AI Agent。架构不是设计出来的，是锁出来的。",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "chitu": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "start:dev": "node dist/index.js --dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "typecheck": "tsc --noEmit",
+    "audit": "node scripts/audit.mjs",
+    "ci": "npm run typecheck && npm run audit && npm run lint && npm test"
+  },
+  "keywords": [
+    "ai-agent",
+    "constraint-emergence",
+    "horsewhip",
+    "terminal",
+    "cli",
+    "autonomous-coding",
+    "architecture"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gongshengyuzhou/chitu.git"
+  },
+  "homepage": "https://github.com/gongshengyuzhou/chitu#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.7"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}

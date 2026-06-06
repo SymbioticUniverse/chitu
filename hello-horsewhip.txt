@@ -1,0 +1,3 @@
+Hello from Horsewhip lock-auto workflow!
+Created at: 2026-05-29
+This file verifies the full automated pipeline works.
