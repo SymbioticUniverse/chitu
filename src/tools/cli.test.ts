@@ -16,8 +16,8 @@ describe("cli_exec", () => {
   });
 
   it("lists directory contents", async () => {
-    const result = await cliExec({ command: "ls .chitu/commands" });
-    expect(result).toContain("horsewhip");
+    const result = await cliExec({ command: "ls .chitu/" });
+    expect(result).toContain("sessions");
   });
 
   it("blocks > redirect", async () => {
