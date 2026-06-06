@@ -4,7 +4,6 @@ import { execSync } from "node:child_process";
 import {
   ansi, color, write, getTermSize, enableRawMode,
   disableRawMode, setScrollRegion, resetScrollRegion,
-  highlightLine, BG_RED_BASE, BG_GREEN_BASE, BG_GRAY_BASE,
 } from "./screen.js";
 import { Agent, buildUserContent } from "../agent.js";
 import { SessionManager } from "../session.js";
@@ -13,8 +12,7 @@ import { HorsewhipGuardImpl } from "../horsewhip/guard.js";
 import { MetricsEngine } from "../metrics.js";
 import { logger } from "../logger.js";
 import { charDisplayWidth, vlen, vtrunc } from "./visual.js";
-import { FMT_BOLD, FMT_ITALIC, FMT_LINK, FMT_CODE, FMT_HEADER, FMT_MUTED, FMT_WHITE, applyInlineFmt, applyLineStartFmt } from "./formatting.js";
-import { printStartupBanner } from "./banner.js";
+import { FMT_BOLD, FMT_ITALIC, FMT_LINK, FMT_CODE, FMT_HEADER, FMT_MUTED, FMT_WHITE } from "./formatting.js";
 import { loadPlanFile, savePlanFile, listPlanFiles } from "../target/plan.js";
 import type { ProviderName } from "../providers/index.js";
 import type { Paradigm } from "../types.js";
@@ -25,6 +23,10 @@ import {
   STATUS_FRAMES, IMAGE_EXTS, BRACKETED_PASTE_START, BRACKETED_PASTE_END,
   WATCHDOG_IDLE_MS, COMMANDS, PARADIGM_COLORS, PARADIGM_CYCLE, PARADIGM_DESC,
 } from "./state.js";
+import {
+  sanitizeAssistantText, stopStreamDrain, startStreamDrain, waitForStreamDrain,
+  printAssistantBlock, redrawBanner, handleResize, type ResizeDeps,
+} from "./render-stream.js";
 
 export interface TUIConfig {
   skipGuard?: boolean;
@@ -139,17 +141,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   };
 
   // ── Text utilities ──
-
-  const sanitizeAssistantText = (text: string): string =>
-    text
-      .replace(/\r/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b/g, "")
-      .replace(/\n{3,}/g, "\n\n");
 
   const trimLeftToWidth = (text: string, maxWidth: number): string => {
     if (maxWidth <= 0) return "";
@@ -633,148 +624,25 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     state.taskStartTime = null;
   };
 
-  // ── Stream rendering ──
-
-  const stopStreamDrain = () => {
-    if (state.streamDrainInterval) {
-      clearInterval(state.streamDrainInterval);
-      state.streamDrainInterval = null;
-    }
-  };
-
-  const startStreamDrain = () => {
-    if (state.streamDrainInterval) return;
-    state.streamDrainInterval = setInterval(() => {
-      if (!state.streamQueue) {
-        if (!state.streaming) stopStreamDrain();
-        return;
-      }
-
-      const markerRe = /(?:^|\n)```[^\n]*\n/;
-      const match = markerRe.exec(state.streamQueue);
-
-      if (match && match.index < 128) {
-        const markerText = match[0];
-        const langMatch = /```([^\n]*)\n/.exec(markerText);
-        const lang = langMatch?.[1]?.trim() ?? "";
-
-        if (match.index === 0) {
-          state.responseCodeBlock = !state.responseCodeBlock;
-          state.codeBlockLang = state.responseCodeBlock ? lang : "";
-          state.streamQueue = state.streamQueue.slice(match[0].length);
-          state.fmtLineStart = true;
-        } else {
-          let before = state.streamQueue.slice(0, match.index + 1);
-          before = before.replace(/\n/g, "\n  ");
-          before = applyInlineFmt(before);
-          if (state.fmtLineStart) { before = applyLineStartFmt(before); }
-          state.fmtLineStart = before.endsWith("\n");
-          write(color.white(before));
-          state.responseCodeBlock = !state.responseCodeBlock;
-          state.codeBlockLang = state.responseCodeBlock ? lang : "";
-          state.streamQueue = state.streamQueue.slice(match.index + match[0].length);
-        }
-      } else if (state.responseCodeBlock) {
-        let drained = 0;
-        while (drained < 2 && state.streamQueue.length > 0) {
-          const nlIdx = state.streamQueue.indexOf("\n");
-          if (nlIdx < 0) break;
-          const line = state.streamQueue.slice(0, nlIdx + 1);
-          state.streamQueue = state.streamQueue.slice(nlIdx + 1);
-          if (state.codeBlockLang === "diff") {
-            const ch0 = line[0];
-            if (ch0 === "+" && line[1] !== "+") {
-              write(highlightLine(line.slice(1), { bg: "green", prefix: "+", indent: 4 }) + "\x1b[K\x1b[0m\n");
-            } else if (ch0 === "-" && line[1] !== "-") {
-              write(highlightLine(line.slice(1), { bg: "red", prefix: "-", indent: 4 }) + "\x1b[K\x1b[0m\n");
-            } else {
-              const content = line.endsWith("\n") ? line.slice(0, -1) : line;
-              write(BG_GRAY_BASE + "    " + "\x1b[2m" + content + "\x1b[K\x1b[0m\n");
-            }
-          } else {
-            write(highlightLine(line, { bg: "gray", indent: 4 }) + "\x1b[K\x1b[0m\n");
-          }
-          drained++;
-        }
-      } else {
-        const nlIdx = state.streamQueue.indexOf("\n");
-        const chunkLen = nlIdx >= 0 ? nlIdx + 1 : Math.min(state.streamQueue.length, 128);
-        let chunk = state.streamQueue.slice(0, chunkLen);
-        state.streamQueue = state.streamQueue.slice(chunkLen);
-        chunk = chunk.replace(/\n/g, "\n  ");
-        chunk = applyInlineFmt(chunk);
-        if (state.fmtLineStart) { chunk = applyLineStartFmt(chunk); }
-        state.fmtLineStart = chunk.endsWith("\n");
-        write(color.white(chunk));
-      }
-    }, 16);
-  };
-
-  const waitForStreamDrain = async (): Promise<void> => {
-    while (state.streamQueue.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 16));
-    }
-  };
-
-  const printAssistantBlock = (text: string) => {
-    write(ansi.moveTo(scrollRegionBottom(), 0) + "\n");
-    const normalized = sanitizeAssistantText(text).trimEnd();
-    if (!normalized) {
-      write(color.red("chitu:") + "\n");
-      return;
-    }
-    const lines = normalized.split("\n");
-    write(color.red("chitu: ") + color.white(lines[0] ?? "") + "\n");
-    for (let i = 1; i < lines.length; i++) {
-      write("  " + color.white(lines[i] ?? "") + "\n");
-    }
-  };
-
-  const redrawBanner = (): number => {
-    return printStartupBanner({
-      skipGuard: state.skipGuard,
-      dev: state.dev,
-      mcpNames: state.mcpNames,
-      skillNames: state.skillNames,
-      commands: COMMANDS,
-      session: !!state.session,
-    });
-  };
-
   // ── Resize handler ──
+
+  const resizeDeps: ResizeDeps = {
+    updateScrollRegion,
+    drawPrompt,
+    drawStatusBar,
+    getTermSize,
+    vtrunc,
+    fmtTokens,
+    fmtCacheRate,
+  };
 
   if (!process.stdin.isTTY) enableRawMode();
 
   process.stdout.on("resize", () => {
-    updateScrollRegion();
-    drawPrompt(state.busy);
-    if (!state.busy && state.statusBarDrawn) {
-      const { cols, rows } = getTermSize();
-      const u = state.lastKnownUsage;
-      const isDeepSeek = state.agent ? state.agent.getProviderName() === "deepseek" : false;
-      const m = state.lastMetricsSnapshot;
-      const sep = color.dim("│");
-      const parts: string[] = [];
-      if (u && u.totalTokens > 0) {
-        const cacheStr = isDeepSeek ? `  ${fmtCacheRate(u.cachedTokens, u.promptTokens)}` : "";
-        parts.push(`${fmtTokens(u.totalTokens)} tokens${cacheStr}`);
-      }
-      const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
-      parts.push(`ctx:${ctxPct}%`);
-      if (m) parts.push(`HITL:${m.humanInLoopCount}`);
-      if (parts.length > 0) {
-        const fullLine = parts.join(`  ${sep}  `);
-        state.statusBarTopRow = rows - STATUS_BAR_HEIGHT;
-        write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)));
-      }
-      drawPrompt(false);
-    } else if (state.busy && state.statusBarDrawn) {
-      state.statusBarTopRow = getTermSize().rows - STATUS_BAR_HEIGHT;
-      drawStatusBar();
-    }
+    handleResize(state, resizeDeps);
   });
 
-  redrawBanner();
+  redrawBanner(state);
   updateScrollRegion();
 
   // ── Task handler ──
@@ -792,7 +660,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       state.statusBarDrawn = false;
       write(ansi.clear + ansi.moveTo(0, 0));
       updateScrollRegion();
-      redrawBanner();
+      redrawBanner(state);
       drawPrompt();
       drawStatusBar();
       return;
@@ -852,7 +720,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/help") {
       const cmdList = COMMANDS.filter((c) => !c.name.startsWith("/exit"))
         .map((c) => `${c.name} — ${c.description}`).join("\n");
-      printAssistantBlock(`可用指令（输入 / 查看提示）：\n${cmdList}\n\n直接输入任务开始对话。ESC 取消当前运行。`);
+      printAssistantBlock(`可用指令（输入 / 查看提示）：\n${cmdList}\n\n直接输入任务开始对话。ESC 取消当前运行。`, scrollRegionBottom);
       drawPrompt();
       return;
     }
@@ -862,9 +730,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const report = engine.compute();
       if (report) {
         const { renderMetricsReport } = await import("../metrics-renderer.js");
-        printAssistantBlock(renderMetricsReport(report));
+        printAssistantBlock(renderMetricsReport(report), scrollRegionBottom);
       } else {
-        printAssistantBlock("No metrics data. Run a task first.");
+        printAssistantBlock("No metrics data. Run a task first.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -876,9 +744,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         printAssistantBlock(
           `OK: ${h.ok}\nSession: ${h.session}\nMessages: ${h.messageCount}\nShutdown: ${h.shutdown}\n`
           + `Rate limits:\n${h.rateLimit.map((r) => `${r.tool}: ${r.used}/${r.limit} per ${r.windowMs / 1000}s`).join("\n")}`,
+          scrollRegionBottom,
         );
       } else {
-        printAssistantBlock("No active session.");
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -886,9 +755,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (task === "/session") {
       if (state.session) {
-        printAssistantBlock(`Session: ${state.session.id}\nTask: ${state.session.task}\nMessages: ${state.agent?.getMessages().length ?? 0}`);
+        printAssistantBlock(`Session: ${state.session.id}\nTask: ${state.session.task}\nMessages: ${state.agent?.getMessages().length ?? 0}`, scrollRegionBottom);
       } else {
-        printAssistantBlock("No active session.");
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -897,7 +766,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/resume") {
       const all = state.sessions.list();
       if (all.length === 0) {
-        printAssistantBlock("无历史会话。");
+        printAssistantBlock("无历史会话。", scrollRegionBottom);
       } else {
         const recent = all.slice(0, 8);
         const lines = recent.map((s) => {
@@ -905,7 +774,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           const date = new Date(s.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
           return `  ${shortId}  ${date}  ${s.task.slice(0, 50)}`;
         }).join("\n");
-        printAssistantBlock(`历史会话（输入 /resume <id> 恢复）：\n${lines}`);
+        printAssistantBlock(`历史会话（输入 /resume <id> 恢复）：\n${lines}`, scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -916,7 +785,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const all = state.sessions.list();
       const match = all.find((s) => s.id.startsWith(idPart));
       if (!match) {
-        printAssistantBlock(`未找到会话: ${idPart}\n输入 /resume 查看列表。`);
+        printAssistantBlock(`未找到会话: ${idPart}\n输入 /resume 查看列表。`, scrollRegionBottom);
       } else {
         state.session = match;
         if (state.session.usage) {
@@ -946,6 +815,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           `消息数：${state.session.messages.length}\n` +
           `Token 估算：${fmtTokens(state.agent.getContextUsage().estimatedTokens)} (${state.agent.getContextUsage().percentage}%)` +
           (state.session.usage ? `\n上次用量：${fmtTokensLive(state.session.usage.total_tokens)} tokens` : ``),
+          scrollRegionBottom,
         );
       }
       drawPrompt();
@@ -957,9 +827,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         const models = state.agent.getDefaultModels();
         const current = state.agent.getModel();
         const lines = models.map((m) => m === current ? `  * ${m} (当前)` : `  - ${m}`).join("\n");
-        printAssistantBlock(`可用模型：\n${lines}\n\n输入模型名切换，如 deepseek-v4-flash`);
+        printAssistantBlock(`可用模型：\n${lines}\n\n输入模型名切换，如 deepseek-v4-flash`, scrollRegionBottom);
       } else {
-        printAssistantBlock("无活跃会话。");
+        printAssistantBlock("无活跃会话。", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -971,9 +841,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         state.agent.setThinking(enable);
         drawModeBar();
         const status = enable ? "启用" : "关闭";
-        printAssistantBlock(`深度思考：${status}\n大模型将${enable ? "" : "不"}在回答前进行深度思考。`);
+        printAssistantBlock(`深度思考：${status}\n大模型将${enable ? "" : "不"}在回答前进行深度思考。`, scrollRegionBottom);
       } else {
-        printAssistantBlock("无活跃会话。");
+        printAssistantBlock("无活跃会话。", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -988,12 +858,13 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           const record = (await import("../soul.js")).SoulManager.load();
           printAssistantBlock(
             `🧠 用户习惯已更新 (v${record?.version ?? "?"}，约 ${record?.estimatedTokens ?? 0} tokens):\n\n${content}`,
+            scrollRegionBottom,
           );
         } else {
-          printAssistantBlock("无法总结用户习惯，请再对话几轮后重试。");
+          printAssistantBlock("无法总结用户习惯，请再对话几轮后重试。", scrollRegionBottom);
         }
       } else {
-        printAssistantBlock("无活跃会话。");
+        printAssistantBlock("无活跃会话。", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -1002,9 +873,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/soul-show") {
       const record = (await import("../soul.js")).SoulManager.load();
       if (record) {
-        printAssistantBlock(`🧠 用户习惯 (v${record.version}，约 ${record.estimatedTokens} tokens):\n\n${record.content}`);
+        printAssistantBlock(`🧠 用户习惯 (v${record.version}，约 ${record.estimatedTokens} tokens):\n\n${record.content}`, scrollRegionBottom);
       } else {
-        printAssistantBlock("尚无用户习惯记录。对话几轮后自动生成，或输入 /soul 强制更新。");
+        printAssistantBlock("尚无用户习惯记录。对话几轮后自动生成，或输入 /soul 强制更新。", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -1013,7 +884,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     // Switch model by name
     if (state.agent && state.agent.getDefaultModels().includes(task.trim())) {
       state.agent.setModel(task.trim());
-      printAssistantBlock(`模型已切换为：${task.trim()}`);
+      printAssistantBlock(`模型已切换为：${task.trim()}`, scrollRegionBottom);
       drawPrompt();
       return;
     }
@@ -1021,14 +892,14 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/plan-active") {
       const all = listPlanFiles(workspaceRoot);
       if (all.length === 0) {
-        printAssistantBlock("无目标计划。启动一个 Target 任务来创建计划。");
+        printAssistantBlock("无目标计划。启动一个 Target 任务来创建计划。", scrollRegionBottom);
       } else {
         const lines = all.map((p) => {
           const icon = p.phase === "abandoned" ? "⬜" : p.phase === "done" ? "✅" : "●";
           const shortId = p.id.startsWith("plan-") ? p.id.slice(5) : p.id;
           return `  ${icon} ${shortId}  [${p.phase}] ${p.completedSubGoals}/${p.subGoalCount}  ${p.goal.slice(0, 55)}`;
         }).join("\n");
-        printAssistantBlock(`目标计划（↑↓ 选择，Enter 激活）：\n${lines}`);
+        printAssistantBlock(`目标计划（↑↓ 选择，Enter 激活）：\n${lines}`, scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -1039,12 +910,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const all = listPlanFiles(workspaceRoot);
       const match = all.find((p) => p.id === idPart || p.id.startsWith(idPart));
       if (!match) {
-        printAssistantBlock(`未找到计划: ${idPart}\n输入 /plan-active 查看列表。`);
+        printAssistantBlock(`未找到计划: ${idPart}\n输入 /plan-active 查看列表。`, scrollRegionBottom);
       } else {
         try {
           const planData = loadPlanFile(workspaceRoot, match.id);
           if (!planData) {
-            printAssistantBlock(`计划文件损坏: ${match.id}`);
+            printAssistantBlock(`计划文件损坏: ${match.id}`, scrollRegionBottom);
           } else {
             const phase = (planData as Record<string, unknown>).phase as string ?? "execute";
             if (phase === "done") (planData as Record<string, unknown>).phase = "review";
@@ -1089,10 +960,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
               `目标: ${match.goal}\n` +
               `进度: ${match.completedSubGoals}/${match.subGoalCount}\n\n` +
               `输入任意内容继续执行。`,
+              scrollRegionBottom,
             );
           }
         } catch (e) {
-          printAssistantBlock(`激活计划失败: ${String(e).slice(0, 100)}`);
+          printAssistantBlock(`激活计划失败: ${String(e).slice(0, 100)}`, scrollRegionBottom);
         }
       }
       drawPrompt();
@@ -1111,14 +983,16 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
             `上下文已压缩：${beforeLen} → ${afterLen} 条消息\n` +
             `Token 估算：${fmtTokens(beforeCtx.estimatedTokens)} → ${fmtTokens(afterCtx.estimatedTokens)} ` +
             `(${beforeCtx.percentage}% → ${afterCtx.percentage}%)`,
+            scrollRegionBottom,
           );
         } else {
           printAssistantBlock(
             `上下文使用率 ${beforeCtx.percentage}%，未达到压缩阈值 (80%)，无需压缩。`,
+            scrollRegionBottom,
           );
         }
       } else {
-        printAssistantBlock("无活跃会话，无需压缩。");
+        printAssistantBlock("无活跃会话，无需压缩。", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -1197,7 +1071,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         state.printingAssistant = true;
       }
       state.streamQueue += normalized;
-      startStreamDrain();
+      startStreamDrain(state);
     };
 
     const onToolOutput = (toolName: string, output: string) => {
@@ -1280,9 +1154,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           state.session.model = currentAgent.getModel();
         }
       }
-      await waitForStreamDrain();
+      await waitForStreamDrain(state);
       state.streaming = false;
-      stopStreamDrain();
+      stopStreamDrain(state);
       state.printingAssistant = false;
       state.responseCodeBlock = false; state.codeBlockLang = "";
 
@@ -1308,8 +1182,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (streamOpened) {
         write("\n");
       } else {
-        if (lastResponse) { printAssistantBlock(lastResponse); }
-        else { printAssistantBlock(""); }
+        if (lastResponse) { printAssistantBlock(lastResponse, scrollRegionBottom); }
+        else { printAssistantBlock("", scrollRegionBottom); }
       }
 
       if (state.session) {
@@ -1319,7 +1193,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     } catch (e) {
       state.streaming = false;
       state.streamQueue = "";
-      stopStreamDrain();
+      stopStreamDrain(state);
       state.printingAssistant = false;
       state.responseCodeBlock = false; state.codeBlockLang = "";
       clearInputBox();
@@ -1338,7 +1212,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     } finally {
       if (watchdogTimer) clearTimeout(watchdogTimer);
       state.streamQueue = "";
-      stopStreamDrain();
+      stopStreamDrain(state);
       stopStatusBar();
       state.busy = false;
       state.streaming = false;
@@ -1650,7 +1524,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (state.agent) state.agent.abort();
 
-    stopStreamDrain();
+    stopStreamDrain(state);
     stopStatusBar();
     state.decoder.end();
     disableRawMode();
