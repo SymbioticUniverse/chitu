@@ -26,9 +26,8 @@ Chitu 是一个终端 AI Agent，核心创新是 **约束自涌现（Constraint 
 ### 安装
 
 ```bash
-npm install -g @共生宇宙/chitu
-# 或从源码构建
-git clone https://github.com/gongshengyuzhou/chitu.git
+# 从源码构建
+git clone https://github.com/SymbioticUniverse/chitu.git
 cd chitu && npm install && npm run build && npm link
 ```
 
@@ -69,7 +68,7 @@ Chitu 会：
 
 关键结果：**零循环依赖、四层架构分层正确、命名风格跨 6 个会话保持一致。** 没有人设计过这个架构——它是锁出来的。
 
-详见 [ceshiwenjian15 项目](https://github.com/gongshengyuzhou/ceshiwenjian15)。
+完整演示项目请参见示例仓库。
 
 ## 架构概览
 
@@ -109,4 +108,4 @@ src/
 
 ## License
 
-MIT — 共生宇宙（广州）人工智能公司
+AGPL-3.0

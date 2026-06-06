@@ -31,12 +31,12 @@
     "autonomous-coding",
     "architecture"
   ],
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gongshengyuzhou/chitu.git"
+    "url": "https://github.com/SymbioticUniverse/chitu.git"
   },
-  "homepage": "https://github.com/gongshengyuzhou/chitu#readme",
+  "homepage": "https://github.com/SymbioticUniverse/chitu#readme",
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
