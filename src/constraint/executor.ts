@@ -17,10 +17,14 @@ import type { ConstraintMode } from "../types.js";
 import {
   recordAutonomous,
   recordExpandBoundary,
-  recordBypassOrchestration,
 } from "../score.js";
-
-const COMPLETION_FILE = ".chitu/completions/latest.json";
+import {
+  commitIteration,
+  updatePlanSteps,
+  checkBypass,
+  readCompletion,
+  readUserGoal,
+} from "./iteration.js";
 
 export interface ConstraintExecOptions {
   onToken?: (text: string) => void;
@@ -89,7 +93,7 @@ export class ConstraintExecutor {
     } catch { this.headCommit = ""; }
 
     this.lockAllCommitted();
-    this.userGoal = this.readUserGoal();
+    this.userGoal = readUserGoal(this.agent);
 
     const sysMsg = this.agent.getMessages()[0];
     if (sysMsg && sysMsg.role === "system") {
@@ -171,7 +175,7 @@ export class ConstraintExecutor {
 
       if (!this.planPath) {
         const plan: MiniPlan = {
-          project: this.project, goal: this.readUserGoal(),
+          project: this.project, goal: readUserGoal(this.agent),
           targetFiles: this.targetFiles, steps: [], createdAt: new Date().toISOString(),
         };
         this.planPath = writeMiniPlan(this.workspaceRoot, plan);
@@ -197,22 +201,12 @@ export class ConstraintExecutor {
     for (const f of this.targetFiles) hints[f] = capability;
     updateInterfacesAfterIteration(this.workspaceRoot, this.targetFiles, hints);
 
-    const commitResult = this.commit(capability);
+    const commitResult = commitIteration(this.workspaceRoot, this.targetFiles, capability);
     if (!commitResult.ok) {
       return `## Commit failed\n${commitResult.error}\n\nResolve and re-run.`;
     }
 
-    if (this.planPath && fs.existsSync(this.planPath)) {
-      try {
-        const plan: MiniPlan = JSON.parse(fs.readFileSync(this.planPath, "utf-8"));
-        plan.steps = this.targetFiles.map((f) => {
-          const action = fs.existsSync(path.join(this.workspaceRoot, f)) ? "modified" : "created";
-          return `${action}: ${f}`;
-        });
-        plan.steps.push(`capability: ${capability}`);
-        fs.writeFileSync(this.planPath, JSON.stringify(plan, null, 2), "utf-8");
-      } catch { /* best-effort */ }
-    }
+    updatePlanSteps(this.workspaceRoot, this.planPath, this.targetFiles, capability);
 
     markPlanItemsDone(this.workspaceRoot, this.targetFiles);
 
@@ -252,8 +246,8 @@ export class ConstraintExecutor {
   ensureBoundary(): { exports: string[] | Record<string, string[]>; imports: string[] | Record<string, string[]>; capability: string; feedback?: string } | null {
     if (!this.lockIntentUsed) this.checkBoundary();
 
-    const completed = this.readCompletion();
-    if (!completed) { this.checkBypass(); return null; }
+    const completed = readCompletion(this.workspaceRoot);
+    if (!completed) { checkBypass(this.workspaceRoot, this.targetFiles, this.project); return null; }
 
     if (this.targetFiles.length === 0) {
       return {
@@ -291,83 +285,5 @@ export class ConstraintExecutor {
     try {
       guard.lockDecouple(`constraint:${this.project}`, { writablePaths: [], allowNewFiles: true, allowShellWrite: false });
     } catch { /* fallback */ }
-  }
-
-  private checkBypass(): void {
-    try {
-      const diff = execSync("git diff --name-only HEAD 2>/dev/null", {
-        cwd: this.workspaceRoot, encoding: "utf-8", timeout: 5000,
-      }).trim();
-      if (!diff) return;
-      const modified = diff.split("\n").filter(Boolean);
-      const outside = modified.filter((f) =>
-        !f.startsWith(".chitu/") && !this.targetFiles.includes(f),
-      );
-      for (const f of outside) {
-        recordBypassOrchestration(this.project, `modified "${f}" outside lock_intent boundary`);
-      }
-    } catch { /* can't check */ }
-  }
-
-  private readCompletion(): { exports: string[] | Record<string, string[]>; imports: string[] | Record<string, string[]>; capability: string } | null {
-    try {
-      const compPath = path.join(this.workspaceRoot, COMPLETION_FILE);
-      if (!fs.existsSync(compPath)) return null;
-      const raw = fs.readFileSync(compPath, "utf-8");
-      if (!raw.trim()) return null;
-      const data = JSON.parse(raw);
-      if (!data || !data.exports) return null;
-      fs.unlinkSync(compPath);
-      return { exports: data.exports ?? [], imports: data.imports ?? [], capability: data.capability ?? "" };
-    } catch { return null; }
-  }
-
-  private commit(message: string): { ok: boolean; hash?: string; error?: string } {
-    try {
-      const toAdd = [...this.targetFiles];
-      try {
-        const untracked = execSync("git ls-files --others --exclude-standard 2>/dev/null", {
-          cwd: this.workspaceRoot, encoding: "utf-8", timeout: 5000,
-        }).trim().split("\n").filter(Boolean);
-        for (const f of untracked) {
-          if (f.startsWith(".chitu/") || f.startsWith(".horsewhip/") || f.startsWith(".git/")) continue;
-          if (f === ".DS_Store" || f === "Thumbs.db" || f.endsWith("~") || f.endsWith(".swp")) continue;
-          if (!toAdd.includes(f)) toAdd.push(f);
-        }
-      } catch { /* skip */ }
-
-      for (const dir of [".chitu/plans", ".chitu/interfaces"]) {
-        const full = path.join(this.workspaceRoot, dir);
-        if (fs.existsSync(full)) toAdd.push(dir + "/");
-      }
-
-      for (const f of toAdd) {
-        try { execSync(`git add -- "${f}"`, { cwd: this.workspaceRoot, timeout: 5000, stdio: "pipe" }); }
-        catch { /* file may not exist */ }
-      }
-
-      const safeMsg = message.replace(/"/g, '\\"');
-      const output = execSync(`git commit -m "chitu: ${safeMsg}"`, {
-        cwd: this.workspaceRoot, encoding: "utf-8", timeout: 10000, stdio: "pipe",
-      }).trim();
-
-      if (output.includes("nothing to commit")) return { ok: true, hash: "unchanged" };
-      const shortHash = output.match(/\[[\w-]+\s+(\w+)\]/)?.[1] ?? output.slice(0, 7);
-      return { ok: true, hash: shortHash };
-    } catch (e: any) {
-      const stderr = String(e?.stderr ?? e?.message ?? e);
-      if (stderr.includes("nothing to commit")) return { ok: true, hash: "unchanged" };
-      return { ok: false, error: stderr.slice(0, 500) || "Unknown commit error" };
-    }
-  }
-
-  private readUserGoal(): string {
-    for (const m of this.agent.getMessages()) {
-      if (m.role === "user") {
-        const text = typeof m.content === "string" ? m.content : "";
-        if (text && !text.startsWith("## ") && text.length > 0) return text.slice(0, 200);
-      }
-    }
-    return "unknown";
   }
 }
