@@ -33,17 +33,40 @@ chitu
 chitu run --task "搭建一个完整的 XXX 系统" --constraint
 ```
 
-## 运行模式
+## TUI 交互界面
 
-| 命令 | 场景 |
-|------|------|
-| `chitu` | TUI 交互界面：在终端直接对话，启动后看到赤兔马 + 输入提示符 `>` |
-| `chitu run --task "..." --constraint` | 约束涌现：auto-commit，Horsewhip 硬锁，迭代不衰减 |
-| `chitu run --task "..." --yunchang` | 策马模式：auto-commit，有 guard |
-| `chitu run --task "..."` | 手动模式：有 guard，手动 commit |
-| `chitu dev --task "..."` | 开发者模式：绕过 guard |
+TUI 是 Chitu 的主力界面。终端输入 `chitu` 启动，看到赤兔马 banner 和底部 `>` 提示符。
 
-TUI 界面中输入 `/help` 查看所有命令，输入任务直接按回车开始执行。
+### 四种范式（Shift+Tab 切换）
+
+| 范式 | TUI 标签 | 说明 | Horsewhip | 自动 commit |
+|------|----------|------|-----------|-------------|
+| 相马（appraise） | `Ask` | 只读问答，不写代码 | 全锁 | — |
+| 策马（ride） | `Target` | 完整工作流：Clarify→Plan→Execute→Review | 按 sub-goal 锁 | 否 |
+| 刺马（spur） | `Modify` | 单文件精准编辑 | 精确锁指定文件 | 否 |
+| 约束（constraint） | `Constraint` | 全自动迭代：Grow→Trim→Verify→auto commit | 硬锁 | **是** |
+
+### 操作方式
+
+```
+> 搭建一个记账应用                         输入任务，按回车执行
+Shift+Tab                                 切换范式
+Ctrl+J                                    换行（多行输入）
+/help                                     查看所有命令
+/quit                                     退出
+/clear                                    清屏
+/compact                                  压缩上下文
+```
+
+### 全自动怎么跑？
+
+约束（constraint）范式就是全自动 —— 在 TUI 里切到 `Constraint`，输入任务，它自己迭代、验证、commit，不需要你插手。
+
+或者 CLI 一键启动：
+
+```bash
+chitu run --task "你的任务" --constraint
+```
 
 ## 实战验证
 
