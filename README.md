@@ -23,8 +23,13 @@ cd chitu && npm install && npm run build && npm link
 # 配置 API Key
 chitu config set apiKey <your-key>
 
-# 进入任意项目目录，启动约束模式自动开发
+# 在任意项目目录运行
 cd your-project
+
+# 启动 TUI 交互界面
+chitu
+
+# 或直接跑约束模式（自动迭代）
 chitu run --task "搭建一个完整的 XXX 系统" --constraint
 ```
 
@@ -32,11 +37,13 @@ chitu run --task "搭建一个完整的 XXX 系统" --constraint
 
 | 命令 | 场景 |
 |------|------|
-| `chitu run --task "..." --constraint` | 约束涌现：自动迭代、自动 commit |
-| `chitu run --task "..." --yunchang` | 自动模式：有 guard，自动 commit |
+| `chitu` | TUI 交互界面：在终端直接对话，启动后看到赤兔马 + 输入提示符 `>` |
+| `chitu run --task "..." --constraint` | 约束涌现：auto-commit，Horsewhip 硬锁，迭代不衰减 |
+| `chitu run --task "..." --yunchang` | 策马模式：auto-commit，有 guard |
 | `chitu run --task "..."` | 手动模式：有 guard，手动 commit |
-| `chitu` | TUI 交互：终端对话界面 |
-| `chitu dev --task "..."` | 开发者：绕过 guard，全权限 |
+| `chitu dev --task "..."` | 开发者模式：绕过 guard |
+
+TUI 界面中输入 `/help` 查看所有命令，输入任务直接按回车开始执行。
 
 ## 实战验证
 
