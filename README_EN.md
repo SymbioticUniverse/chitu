@@ -15,7 +15,7 @@
 
 ---
 
-> Chitu is a terminal AI agent powered by **Constraint Emergence** — a paradigm where architecture grows organically from locked interface boundaries rather than upfront design documents.
+> Chitu is a Git-native terminal AI agent powered by **Constraint Emergence** — a paradigm where architecture grows organically from locked interface boundaries rather than upfront design documents. Chitu is built on Git: boundary locking, auto-commit, and safe rollback all operate on Git primitives.
 
 > **Chitu is built on [Horsewhip](https://github.com/SymbioticUniverse/horsewhip).** Horsewhip provides the boundary-locking engine, file guards, and auto-commit mechanics that make constraint emergence possible. For the full experience — including VS Code / Cursor extension, real-time boundary visualization, and guard intercepts — check out the [Horsewhip project](https://github.com/SymbioticUniverse/horsewhip).
 
@@ -29,17 +29,13 @@ chitu
 
 First launch walks you through a **setup wizard** — pick your AI provider, paste your API key, done. After that, `chitu` drops you straight into the TUI.
 
-### Git Dependency
-
-Chitu relies heavily on Git. Boundary locking, auto-commit, and rollback — the entire constraint emergence engine — is built on Git primitives. On startup:
+### Startup Behavior
 
 | Scenario | Behavior |
 |:---|:---|
 | Git-initialized project directory | Launches TUI directly |
 | Project directory without Git (`package.json`, `src/`, etc.) | Prompts `Run git init to initialize? [Y/n]`, auto-inits on Enter |
 | Non-project directory (Desktop, Downloads, etc.) | Forces Ask (read-only) mode, directs user to a project directory |
-
-> Constraint mode is unavailable without a Git repo — no repo means no boundary to lock, no history to roll back.
 
 ---
 

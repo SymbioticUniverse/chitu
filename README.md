@@ -15,7 +15,7 @@
 
 ---
 
-> 赤兔（Chitu）是一个终端 AI 智能体，其核心创新是**约束涌现**（Constraint Emergence）——通过 Horsewhip 边界锁定，逐轮固化已完成模块，迫使系统架构从约束中自然生长，而非依赖设计文档。
+> 赤兔（Chitu）是一个基于 Git 仓库的终端 AI 智能体，其核心创新是**约束涌现**（Constraint Emergence）——通过 Horsewhip 边界锁定，逐轮固化已完成模块，迫使系统架构从约束中自然生长，而非依赖设计文档。Chitu 高度依赖 Git：边界锁定、自动提交、安全回滚等全部核心机制均构建于 Git 原语之上。
 
 > **本项目基于 [Horsewhip](https://github.com/SymbioticUniverse/horsewhip) 构建。** Horsewhip 是约束涌现的底层引擎，提供边界锁定、文件守卫与自动提交能力。如需完整体验——包括 VS Code / Cursor 插件、实时边界可视化与守卫拦截——请前往 [Horsewhip 项目主页](https://github.com/SymbioticUniverse/horsewhip) 了解详情。
 
@@ -29,17 +29,13 @@ chitu
 
 首次启动会进入**配置向导**——选择 AI 服务商、输入 API Key 即可。之后直接 `chitu` 进入 TUI。
 
-### Git 依赖
-
-Chitu 高度依赖 Git 仓库。约束涌现的边界锁定、自动提交、回滚等核心机制全部基于 Git 实现。启动时：
+### 启动行为
 
 | 场景 | 行为 |
 |:---|:---|
 | 已初始化 Git 的项目目录 | 直接进入 TUI |
 | 未初始化的项目目录（有 `package.json`、`src/` 等） | 提示 `Run git init to initialize? [Y/n]`，回车自动 `git init` |
 | 非项目目录（桌面、下载等） | 强制进入 Ask 只读模式，提示前往项目目录 |
-
-> 在非 Git 目录下 Chitu 无法执行 Constraint 模式，因为没有仓库就没有边界可锁、没有历史可回滚。
 
 ---
 
