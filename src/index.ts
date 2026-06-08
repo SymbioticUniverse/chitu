@@ -9,8 +9,9 @@ import { startTUI } from "./tui/index.js";
 import { main } from "./cli.js";
 import { logger } from "./logger.js";
 import { ensureApiKey } from "./global-config.js";
+import { runSetup, isFirstRun } from "./tui/setup.js";
 
-// 检查目录是否像一个代码项目（有项目标志文件）
+// Check if directory looks like a code project (has project marker files)
 function isProjectDirectory(dir: string): boolean {
   const markers = [
     "package.json", "tsconfig.json", "Cargo.toml", "go.mod",
@@ -20,7 +21,7 @@ function isProjectDirectory(dir: string): boolean {
   for (const m of markers) {
     if (existsSync(join(dir, m))) return true;
   }
-  // 有超过3个文件也算（可能有隐藏的配置文件）
+  // Also consider directories with >3 files (might have hidden config files)
   try {
     const entries = readdirSync(dir).filter((e) => !e.startsWith("."));
     return entries.length > 3;
@@ -43,29 +44,33 @@ process.on("unhandledRejection", (reason) => {
 const argv = process.argv.slice(2);
 const cwd = process.cwd();
 
-// ── API Key 自检：未配置则交互式引导输入 ──
-await ensureApiKey();
+// ── First-run setup wizard ──
+if (isFirstRun()) {
+  await runSetup();
+} else {
+  await ensureApiKey();
+}
 
-let forceAppraise = false; // 非项目目录时强制只读问答
+let forceAppraise = false; // Force read-only Q&A in non-project directories
 
-// ── Git 仓库检查 ──
+// ── Git repository check ──
 if (!existsSync(join(cwd, ".git"))) {
   const isProject = isProjectDirectory(cwd);
 
   if (!isProject) {
-    // 桌面、下载等非项目目录 → 限制只读问答模式
-    console.log("🐴 当前目录不是代码项目，赤兔将以Ask 只读问答模式运行。\n");
-    console.log(`   目录: ${cwd}`);
-    console.log(`   如需创建项目，请先 git init 后在项目目录中运行。\n`);
+    // Desktop, Downloads, etc. — not a project directory, limit to read-only Q&A
+    console.log("🐴 Current directory is not a code project. Chitu will run in Ask (read-only Q&A) mode.\n");
+    console.log(`   Directory: ${cwd}`);
+    console.log(`   To create a project, run git init first, then run chitu in the project directory.\n`);
     forceAppraise = true;
   } else {
-    // 项目目录 → 询问是否初始化 git
-    console.log("🐴 赤兔需要在 Git 仓库中工作，当前目录尚未初始化。\n");
-    console.log(`   目录: ${cwd}\n`);
+    // Project directory — ask whether to initialize git
+    console.log("🐴 Chitu needs a Git repository to work. Current directory is not initialized.\n");
+    console.log(`   Directory: ${cwd}\n`);
 
     const answer = await new Promise<string>((resolve) => {
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      rl.question("   是否运行 git init 初始化仓库？[Y/n] ", (ans) => {
+      rl.question("   Run git init to initialize? [Y/n] ", (ans) => {
         rl.close();
         resolve(ans.trim().toLowerCase());
       });
@@ -74,13 +79,13 @@ if (!existsSync(join(cwd, ".git"))) {
     if (answer === "" || answer === "y" || answer === "yes") {
       try {
         execSync("git init", { cwd, stdio: "inherit", timeout: 5000 });
-        console.log("✅ 已初始化 Git 仓库。\n");
+        console.log("✅ Git repository initialized.\n");
       } catch {
-        console.log("⚠️  初始化失败，请手动运行 git init 后重试。");
+        console.log("⚠️  Initialization failed. Please run git init manually and retry.");
         process.exit(1);
       }
     } else {
-      console.log("❌ 已取消。请手动运行 git init 后重试。");
+      console.log("❌ Cancelled. Please run git init manually and retry.");
       process.exit(1);
     }
   }
@@ -93,11 +98,9 @@ new HorsewhipSync(cwd).autoCheck().then((check) => {
   }
 }).catch((e) => { logger.warn("Horsewhip version check failed", { error: String(e) }); });
 
-// chitu               → 奉先模式 (吕布·手动操作，有 guard)
-// chitu --fengxian     → 奉先模式 (同上，显式指定)
-// chitu --yunchang     → 云长模式 (关羽·自动镇守，有 guard，auto commit)
-// chitu --dev          → TUI dev mode
-// chitu run/resume/metrics/list → CLI mode
+// chitu          → TUI interactive
+// chitu --dev     → TUI dev mode
+// chitu run/resume/metrics/list/config/help → CLI mode
 
 if (forceAppraise) {
   startTUI({ skipGuard: true, paradigm: "appraise" }).catch((e) => {
@@ -105,13 +108,10 @@ if (forceAppraise) {
     process.exit(1);
   });
 } else if (!["run", "resume", "metrics", "list", "dev", "build", "sync", "config", "help"].includes(argv[0] ?? "") &&
-           (argv.length === 0 || argv.includes("--fengxian") || argv.includes("--yunchang") || argv.includes("--constraint") || argv[0] === "--dev")) {
-  const yunchang = argv.includes("--yunchang");
-  const constraint = argv.includes("--constraint");
+           (argv.length === 0 || argv[0] === "--dev" || argv.includes("--thinking"))) {
   const dev = argv[0] === "--dev";
   const thinking = argv.includes("--thinking");
-  const paradigm = constraint ? "constraint" : yunchang ? "ride" : undefined;
-  startTUI({ skipGuard: dev, dev, paradigm, yunchang: yunchang || constraint, thinking }).catch((e) => {
+  startTUI({ skipGuard: dev, dev, thinking }).catch((e) => {
     console.error("Chitu fatal:", e);
     process.exit(1);
   });

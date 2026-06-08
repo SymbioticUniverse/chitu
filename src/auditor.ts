@@ -3,10 +3,10 @@ import * as path from "node:path";
 import { logger } from "./logger.js";
 
 /**
- * 审计事件写入 + 查询。
- * 从 agent.ts 抽出，独立负责：
- * - writeAuditEvent — 写一条审计事件到 session-audit.json
- * - loadHumanInLoopCount — 累计 human_in_loop 事件数
+ * Audit event write + query.
+ * Extracted from agent.ts, independently responsible for:
+ * - writeAuditEvent — writes an audit event to session-audit.json
+ * - loadHumanInLoopCount — counts human_in_loop events
  */
 
 export class Auditor {
@@ -18,7 +18,7 @@ export class Auditor {
     this.taskId = taskId;
   }
 
-  /** 写一条审计事件到 .git/horsewhip/session-audit.json */
+  /** Write an audit event to .git/horsewhip/session-audit.json */
   writeEvent(type: string, data: Record<string, unknown> = {}): void {
     try {
       const auditDir = path.join(this.workspaceRoot, ".git", "horsewhip");
@@ -39,7 +39,7 @@ export class Auditor {
     }
   }
 
-  /** 累计所有任务中 human_in_loop 事件次数 */
+  /** Count human_in_loop events across all tasks */
   loadHumanInLoopCount(): number {
     try {
       const auditPath = path.join(this.workspaceRoot, ".git", "horsewhip", "session-audit.json");

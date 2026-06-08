@@ -6,6 +6,7 @@ import * as readline from "node:readline";
 interface GlobalConfig {
   apiKey?: string;
   model?: string;
+  provider?: string;
   baseUrl?: string;
 }
 
@@ -30,12 +31,29 @@ export function saveGlobalConfig(updates: Partial<GlobalConfig>): void {
   writeFileSync(GLOBAL_CONFIG_PATH, JSON.stringify(merged, null, 2) + "\n", "utf-8");
 }
 
+/** Resolve provider: CLI arg > global config > env vars > default (deepseek). */
+export function resolveProvider(cliProvider?: string): string {
+  if (cliProvider) return cliProvider;
+  const cfg = loadGlobalConfig();
+  if (cfg.provider) return cfg.provider;
+  if (process.env["ANTHROPIC_API_KEY"]) return "claude";
+  if (process.env["OPENAI_API_KEY"]) return "openai";
+  if (process.env["DEEPSEEK_API_KEY"]) return "deepseek";
+  return "deepseek";
+}
+
 /** Resolve API key: CLI arg > env var > global config. */
 export function resolveApiKey(cliKey?: string): string | undefined {
   if (cliKey) return cliKey;
   if (process.env["DEEPSEEK_API_KEY"]) return process.env["DEEPSEEK_API_KEY"];
   if (process.env["ANTHROPIC_API_KEY"]) return process.env["ANTHROPIC_API_KEY"];
+  if (process.env["OPENAI_API_KEY"]) return process.env["OPENAI_API_KEY"];
   return loadGlobalConfig().apiKey;
+}
+
+/** Resolve base URL: CLI arg > global config > provider default. */
+export function resolveBaseUrl(cliBaseUrl?: string): string | undefined {
+  return cliBaseUrl ?? loadGlobalConfig().baseUrl;
 }
 
 /** Resolve model: CLI arg > global config. */

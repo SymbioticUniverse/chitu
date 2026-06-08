@@ -95,13 +95,13 @@ export class SoulManager {
     if (!record || !record.content) return "";
 
     return [
-      "## 用户习惯 (全域，跨项目)",
+      "## User Habits (global, cross-project)",
       "",
-      "以下是对你与用户长期协作中总结出的用户偏好和习惯。请始终遵守。",
+      "These are user preferences and habits summarized from long-term collaboration. Always follow them.",
       "",
       record.content,
       "",
-      `(更新于 ${record.updatedAt.slice(0, 10)}，约 ${record.estimatedTokens} tokens)`,
+      `(Updated ${record.updatedAt.slice(0, 10)}, ~${record.estimatedTokens} tokens)`,
     ].join("\n");
   }
 

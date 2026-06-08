@@ -1,100 +1,124 @@
-# 赤兔 (Chitu)
+# Chitu (赤兔)
 
-人中吕布，马中赤兔。**架构不是设计出来的，是锁出来的。**
+<div align="center">
 
-Chitu 是一个终端 AI Agent，核心创新是 **约束自涌现（Constraint Emergence）**——不以设计文档驱动架构，而是通过 Horsewhip 边界锁逐轮锁定已完成模块，让系统架构从约束中自然生长。
+**Architecture is not designed. It is locked in.**
 
-## 与现有 AI 编码工具的区别
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![Provider](https://img.shields.io/badge/AI-Claude%20%7C%20DeepSeek%20%7C%20OpenAI-orange.svg)]()
+
+</div>
+
+---
+
+Chitu is a terminal AI agent whose core innovation is **Constraint Emergence** — instead of driving architecture through design documents, Horsewhip boundary locks lock completed modules round by round, forcing the system architecture to grow naturally from constraints.
+
+## Table of Contents
+
+- [How Chitu Differs](#how-chitu-differs)
+- [Quick Start](#quick-start)
+- [Paradigms](#paradigms)
+  - [Target vs Constraint](#target-vs-constraint)
+- [Real-world Results](#real-world-results)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [License](#license)
+
+## How Chitu Differs
 
 | | Copilot / Cursor | OpenHands / SWE-Agent | **Chitu** |
 |---|---|---|---|
-| 模式 | 补全 / 问答 | 指令执行 | **约束涌现** |
-| 架构来源 | 人工设计 | 人工指令 | **从接口锁中自发涌现** |
-| 长时间任务 | 逐步退化 | 上下文膨胀后崩溃 | **上下文压缩，迭代不衰减** |
-| 人工介入 | 持续 | 频繁 | **接近零** |
+| Mode | Completion / Q&A | Instruction execution | **Constraint emergence** |
+| Architecture | Human-designed | Human-instructed | **Emerges from locked interfaces** |
+| Long-running tasks | Degrades over time | Context bloat → collapse | **Context compression, no decay** |
+| Human intervention | Continuous | Frequent | **Near zero** |
 
-## 快速开始
+## Quick Start
+
+**Prerequisites:** Node.js >= 18, an API key from Claude / DeepSeek / OpenAI.
 
 ```bash
-# 从源码构建
+# Install from source
 git clone https://github.com/SymbioticUniverse/chitu.git
 cd chitu && npm install && npm run build && npm link
 
-# 配置 API Key
+# Configure your API key
 chitu config set apiKey <your-key>
 
-# 在任意项目目录运行
-cd your-project
+# Launch the TUI in any project directory
+cd your-project && chitu
 
-# 启动 TUI 交互界面
-chitu
-
-# 或直接跑约束模式（自动迭代）
-chitu run --task "搭建一个完整的 XXX 系统" --constraint
+# Or run constraint mode directly
+chitu run --task "Build a complete inventory management system" --constraint
 ```
 
-## TUI 交互界面
+## Paradigms
 
-TUI 是 Chitu 的主力界面。终端输入 `chitu` 启动，看到赤兔马 banner 和底部 `>` 提示符。
+Chitu has four paradigms. Press `Shift+Tab` in the TUI to cycle through them.
 
-### 四种范式（Shift+Tab 切换）
+| Paradigm | Label | Description | Horsewhip | Auto commit |
+|---|---|---|---|---|
+| Ask (`appraise`) | `Ask` | Read-only Q&A, no code changes | Full lock | — |
+| Target (`ride`) | `Target` | Goal-driven: Clarify → Plan → Execute → Review | Per sub-goal lock | No |
+| Modify (`spur`) | `Modify` | Single-file surgical edit | Precise file lock | No |
+| Constraint (`constraint`) | `Constraint` | Autonomous iteration: Grow → Trim → Verify → Commit | Hard lock | **Yes** |
 
-| 范式 | TUI 标签 | 说明 | Horsewhip | 自动 commit |
-|------|----------|------|-----------|-------------|
-| 相马（appraise） | `Ask` | 只读问答，不写代码 | 全锁 | — |
-| 策马（ride） | `Target` | 完整工作流：Clarify→Plan→Execute→Review | 按 sub-goal 锁 | 否 |
-| 刺马（spur） | `Modify` | 单文件精准编辑 | 精确锁指定文件 | 否 |
-| 约束（constraint） | `Constraint` | 全自动迭代：Grow→Trim→Verify→auto commit | 硬锁 | **是** |
-
-### 操作方式
+### TUI Controls
 
 ```
-> 搭建一个记账应用                         输入任务，按回车执行
-Shift+Tab                                 切换范式
-Ctrl+J                                    换行（多行输入）
-/help                                     查看所有命令
-/quit                                     退出
-/clear                                    清屏
-/compact                                  压缩上下文
+Shift+Tab      Cycle paradigm
+Ctrl+J         Newline (multi-line input)
+/help          Show all commands
+/quit          Quit
+/clear         Clear screen
+/compact       Compress context
 ```
 
-### 全自动怎么跑？
+### Target vs Constraint
 
-约束（constraint）范式就是全自动 —— 在 TUI 里切到 `Constraint`，输入任务，它自己迭代、验证、commit，不需要你插手。
+Both modes build software autonomously. The difference is **how** they ensure correctness.
 
-或者 CLI 一键启动：
+| | Target | Constraint |
+|---|---|---|
+| **Driven by** | A human-authored plan | Locked interface boundaries |
+| **Workflow** | Clarify → Plan → Execute → Review (4 phases) | lockIntent → Grow → Trim → Verify → Commit (loop) |
+| **Verification** | Semantic: tests pass, exports exist, cross-module integration, commit traceability | Mechanical: empty output, exports declaration, compile + test |
+| **File policy** | All files editable | Committed files locked, only new files writable |
+| **Best for** | Well-scoped tasks with clear requirements | Exploratory builds where design should emerge |
+| **HITL** | Review phase flags issues for human judgment | Zero — auto-commits or auto-rolls back |
+| **Context** | Full conversation per phase | Compressed per iteration; only interface docs persist |
 
-```bash
-chitu run --task "你的任务" --constraint
-```
+**Target** is plan-driven — you define the goal, and the AI verifies it built the right thing.
+**Constraint** is boundary-driven — you lock what works, and the system grows organically from those boundaries.
 
-## 实战验证
+## Real-world Results
 
-在纯约束模式下，Chitu 用 **6 个独立会话、0 次人工干预**，构建了一个 **38 模块、19,419 行**的连锁商贸管理系统，**零循环依赖、四层架构分层正确、命名风格跨会话一致。**
+**38-module supply chain system** — built across 6 independent sessions with **zero human intervention**: 19,419 lines, zero circular dependencies, correct four-layer architecture, consistent naming across sessions.
 
-Chitu 自身也由 Chitu 在约束模式下重构——**10 轮迭代、12 次 auto-commit、2 次自动回滚、HITL 0 次**，最大文件 1380→752 行。
+**Chitu self-refactoring** — Chitu refactored itself in constraint mode: 10 iterations, 12 auto-commits, 2 automatic rollbacks, **0 HITL events**. Largest file: 1380 → 752 lines.
 
-## 架构概览
+## Architecture
 
 ```
 src/
-├── agent.ts + agent/       # Agent 核心循环 + 上下文 + 工具执行
-├── constraint/             # 约束引擎（lockIntent→Grow→Trim→Verify→Commit）
-├── target/                 # 目标引擎（Clarify→Plan→Execute→Review）
-├── horsewhip/              # 边界守卫（guard + audit + boundary-parser）
-├── tui/                    # 终端 UI（12 模块，1082 行）
-├── providers/              # AI 适配层（Claude / DeepSeek / OpenAI）
-├── tools/                  # Agent 工具集
-├── rollback/               # 安全回滚与锚点
-├── routing.ts              # 语义路由
-└── types.ts                # 核心类型定义
+├── agent.ts + agent/       # Core agent loop, context, tool execution
+├── constraint/             # Constraint engine (lockIntent → Grow → Trim → Verify → Commit)
+├── target/                 # Target engine (Clarify → Plan → Execute → Review)
+├── horsewhip/              # Boundary guard (guard + audit + boundary-parser)
+├── tui/                    # Terminal UI (12 modules, 1082 lines)
+├── providers/              # AI provider adapters (Claude / DeepSeek / OpenAI)
+├── tools/                  # Agent tool set
+├── rollback/               # Safe rollback & anchor points
+├── routing.ts              # Semantic intent routing
+└── types.ts                # Core type definitions
 ```
 
-## 依赖
+## Requirements
 
-- Node.js >= 18
-- AI API key（Claude / DeepSeek / OpenAI 任一）
+- **Node.js** >= 18
+- **AI API key** — Claude, DeepSeek, or OpenAI
 
 ## License
 
-AGPL-3.0
+[AGPL-3.0](LICENSE)

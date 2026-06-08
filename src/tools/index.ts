@@ -6,6 +6,7 @@ import { createWriteTools } from "./write.js";
 import { createTaskTools } from "./task.js";
 import { createMemoryTools } from "./memory.js";
 import { createCLITools, cliToolDefs } from "./cli.js";
+import { createAutoInstallTools, autoInstallToolDefs } from "./auto-install.js";
 import type { ToolContext } from "../types.js";
 
 export function getAllToolDefs(): ToolDef[] {
@@ -18,6 +19,7 @@ export function getAllToolDefs(): ToolDef[] {
     ...progressToolDefs(),
     ...completionToolDefs(),
     ...horsewhipToolDefs(),
+    ...autoInstallToolDefs(),
   ];
 }
 
@@ -30,6 +32,7 @@ export function getAllToolHandlers(ctx: ToolContext): Record<string, ToolHandler
     ...createCLITools(),
     ...createProgressHandler(),
     ...createCompletionHandler(ctx),
+    ...createAutoInstallTools(ctx),
   };
 }
 

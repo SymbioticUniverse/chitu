@@ -1,5 +1,5 @@
 /**
- * render-stream.ts — 流渲染
+ * render-stream.ts — Stream rendering
  *
  * Extracted from app.ts startTUI closure.
  * Functions for streaming output rendering, assistant block printing,
@@ -13,6 +13,8 @@ import { applyInlineFmt, applyLineStartFmt } from "./formatting.js";
 import { printStartupBanner } from "./banner.js";
 import type { TUIState } from "./state.js";
 import { COMMANDS } from "./state.js";
+import { detectProvider } from "../providers/types.js";
+import { resolveModel } from "../global-config.js";
 
 // ── Pure text sanitization ──
 
@@ -132,7 +134,16 @@ export function printAssistantBlock(
 
 // ── Banner ──
 
+const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
+  deepseek: "deepseek-v4-pro",
+  claude: "claude-sonnet-4-6",
+  openai: "gpt-4o",
+};
+
 export function redrawBanner(state: TUIState): number {
+  const agent = state.agent;
+  const providerName = agent?.getProviderName() ?? state.provider ?? detectProvider();
+  const modelName = agent?.getModel() ?? resolveModel(state.model) ?? PROVIDER_DEFAULT_MODEL[providerName] ?? "default";
   return printStartupBanner({
     skipGuard: state.skipGuard,
     dev: state.dev,
@@ -140,6 +151,8 @@ export function redrawBanner(state: TUIState): number {
     skillNames: state.skillNames,
     commands: COMMANDS,
     session: !!state.session,
+    providerName,
+    modelName,
   });
 }
 

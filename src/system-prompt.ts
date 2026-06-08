@@ -92,9 +92,19 @@ export function loadSystemPrompt(workspaceRoot?: string): string {
       const userPath = join(workspaceRoot, ".chitu", "CHITU.md");
       if (existsSync(userPath)) {
         const userContent = readFileSync(userPath, "utf-8").trim();
-        if (userContent) parts.push("---\n# 用户项目规则\n\n" + userContent);
+        if (userContent) parts.push("---\n# User Project Rules\n\n" + userContent);
       }
     }
+
+    // Layer 4b: Global user rules (cross-project, user-written)
+    try {
+      const home = process.env["HOME"] ?? "~";
+      const globalChituPath = join(home, ".chitu", "CHITU.md");
+      if (existsSync(globalChituPath)) {
+        const globalContent = readFileSync(globalChituPath, "utf-8").trim();
+        if (globalContent) parts.push("---\n# User Global Rules (all projects)\n\n" + globalContent);
+      }
+    } catch { /* skip */ }
 
     // Layer 5: Soul (cross-project)
     try {
@@ -103,7 +113,7 @@ export function loadSystemPrompt(workspaceRoot?: string): string {
         const soulRaw = readFileSync(soulPath, "utf-8");
         const soulMatch = soulRaw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
         if (soulMatch && soulMatch[1]?.trim()) {
-          parts.push("## 用户习惯\n\n" + soulMatch[1].trim());
+          parts.push("## User Habits\n\n" + soulMatch[1].trim());
         }
       }
     } catch { /* skip */ }

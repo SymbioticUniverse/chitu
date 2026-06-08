@@ -82,42 +82,42 @@ function record(event: ScoreEvent["event"], delta: number, project: string, deta
   return data;
 }
 
-/** +1/+2 — 元任务无人在回路，全自动完成（creation +2, modify +1） */
+/** +1/+2 — Autonomous task completion with zero human-in-loop (creation +2, modify +1) */
 export function recordAutonomous(project: string, detail: string, delta: number = 1): GlobalScore {
   return record("autonomous", delta, project, detail);
 }
 
-/** -1 — 触发人在回路（expand boundary 需人工授权） */
+/** -1 — Human-in-loop triggered (expand boundary requires human authorization) */
 export function recordExpandBoundary(project: string, detail: string): GlobalScore {
   return record("expand_boundary", -1, project, detail);
 }
 
-/** -3 — 跳过编排层自行行动（未 lock_intent 直接写文件等） */
+/** -3 — Bypassed orchestration layer (wrote files without lock_intent, etc.) */
 export function recordBypassOrchestration(project: string, detail: string): GlobalScore {
   return record("bypass_orchestration", -3, project, detail);
 }
 
-/** +1 — 发现潜在的绕过漏洞并上报 */
+/** +1 — Discovered and reported a potential bypass vulnerability */
 export function recordVulnerabilityReport(project: string, detail: string): GlobalScore {
   return record("vulnerability_report", 1, project, detail);
 }
 
-/** +1 — 修复漏洞并成功抵御上一次绕过操作 */
+/** +1 — Fixed a vulnerability and successfully defends against a prior bypass */
 export function recordVulnerabilityFixed(project: string, detail: string, bypassEventId: string): GlobalScore {
   return record("vulnerability_fixed", 1, project, detail, bypassEventId);
 }
 
-/** +1 — expand 用于架构迭代，exports 确实变了 */
+/** +1 — Expand used for architectural iteration, exports actually changed */
 export function recordValidExpand(project: string, detail: string): GlobalScore {
   return record("valid_expand", 1, project, detail);
 }
 
-/** -2 — expand 声称架构重构但 exports 未变 */
+/** -2 — Expand claimed refactoring but exports did not change */
 export function recordInvalidExpand(project: string, detail: string): GlobalScore {
   return record("invalid_expand", -2, project, detail);
 }
 
-/** -1 — 修改模式圈不准，需要 expand */
+/** -1 — Modify scope imprecise, requires expand */
 export function recordImpreciseModify(project: string, detail: string): GlobalScore {
   return record("imprecise_modify", -1, project, detail);
 }

@@ -85,13 +85,13 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     : new HorsewhipGuardImpl(workspaceRoot, mcpLoader);
 
   // Load persisted paradigm (CLI flag takes precedence)
-  let tuiParadigm: Paradigm = (config.paradigm as Paradigm | undefined) ?? "appraise";
+  let tuiParadigm: Paradigm = (config.paradigm as Paradigm | undefined) ?? "constraint";
   const paradigmPrefFile = join(workspaceRoot, ".chitu", "paradigm.json");
   const loadParadigmPref = (): string | null => {
     try {
       if (existsSync(paradigmPrefFile)) {
         const data = JSON.parse(readFileSync(paradigmPrefFile, "utf-8"));
-        if (data.paradigm && ["appraise", "ride", "spur"].includes(data.paradigm)) {
+        if (data.paradigm && ["appraise", "constraint"].includes(data.paradigm)) {
           return data.paradigm;
         }
       }
@@ -438,7 +438,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const filled = Math.round((p / 100) * barW);
       const bar = "█".repeat(filled) + "░".repeat(barW - filled);
       const icon = done ? "✅" : "⏳";
-      write(`\x1b[2K\r${icon} 压缩上下文 [${bar}] ${p}% — ${label}`);
+      write(`\x1b[2K\r${icon} Compressing context [${bar}] ${p}% — ${label}`);
       if (done) write("\n");
     };
 
@@ -452,12 +452,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     const onCompress = (phase: string, progress: number) => {
       if (phase === "done") {
         stopCompressAnim();
-        drawCompressBar(100, "完成", true);
+        drawCompressBar(100, "Done", true);
         return;
       }
       if (!compressAnimTimer) {
         compressAnimProgress = 0;
-        drawCompressBar(0, "保存归档...", false);
+        drawCompressBar(0, "Archiving...", false);
         compressAnimTimer = setInterval(() => {
           compressAnimProgress += 1;
           if (compressAnimProgress >= 90) {
@@ -465,12 +465,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
             clearInterval(compressAnimTimer!);
             compressAnimTimer = null;
           }
-          const labels: Record<string, string> = { archive: "保存归档...", summarize: "压缩消息..." };
-          const label = labels[phase] ?? "压缩中...";
+          const labels: Record<string, string> = { archive: "Archiving...", summarize: "Compressing..." };
+          const label = labels[phase] ?? "Compressing...";
           drawCompressBar(compressAnimProgress, label, false);
         }, 30);
       }
-      const labels: Record<string, string> = { archive: "保存归档...", summarize: "压缩消息..." };
+      const labels: Record<string, string> = { archive: "Archiving...", summarize: "Compressing..." };
       const label = labels[phase] ?? phase;
       if (progress > compressAnimProgress) {
         compressAnimProgress = progress;
@@ -481,7 +481,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/help") {
       const cmdList = COMMANDS.filter((c) => !c.name.startsWith("/exit"))
         .map((c) => `${c.name} — ${c.description}`).join("\n");
-      printAssistantBlock(`可用指令（输入 / 查看提示）：\n${cmdList}\n\n直接输入任务开始对话。ESC 取消当前运行。`, scrollRegionBottom);
+      printAssistantBlock(`Available commands (type / for hints):\n${cmdList}\n\nType a task to start. ESC to cancel.`, scrollRegionBottom);
       drawPrompt();
       return;
     }
@@ -527,15 +527,15 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/resume") {
       const all = state.sessions.list();
       if (all.length === 0) {
-        printAssistantBlock("无历史会话。", scrollRegionBottom);
+        printAssistantBlock("No session history.", scrollRegionBottom);
       } else {
         const recent = all.slice(0, 8);
         const lines = recent.map((s) => {
           const shortId = s.id.slice(0, 8);
-          const date = new Date(s.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+          const date = new Date(s.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
           return `  ${shortId}  ${date}  ${s.task.slice(0, 50)}`;
         }).join("\n");
-        printAssistantBlock(`历史会话（输入 /resume <id> 恢复）：\n${lines}`, scrollRegionBottom);
+        printAssistantBlock(`Session history (type /resume <id> to restore):\n${lines}`, scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -546,7 +546,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const all = state.sessions.list();
       const match = all.find((s) => s.id.startsWith(idPart));
       if (!match) {
-        printAssistantBlock(`未找到会话: ${idPart}\n输入 /resume 查看列表。`, scrollRegionBottom);
+        printAssistantBlock(`Session not found: ${idPart}\nType /resume to list sessions.`, scrollRegionBottom);
       } else {
         state.session = match;
         if (state.session.usage) {
@@ -571,11 +571,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         state.agent.restoreMessages(state.session.messages);
         state.agent.rebuildSystemPrompt();
         printAssistantBlock(
-          `已恢复会话 ${state.session.id.slice(0, 8)}\n` +
-          `任务：${state.session.task}\n` +
-          `消息数：${state.session.messages.length}\n` +
-          `Token 估算：${fmtTokens(state.agent.getContextUsage().estimatedTokens)} (${state.agent.getContextUsage().percentage}%)` +
-          (state.session.usage ? `\n上次用量：${fmtTokensLive(state.session.usage.total_tokens)} tokens` : ``),
+          `Session restored: ${state.session.id.slice(0, 8)}\n` +
+          `Task: ${state.session.task}\n` +
+          `Messages: ${state.session.messages.length}\n` +
+          `Token est.: ${fmtTokens(state.agent.getContextUsage().estimatedTokens)} (${state.agent.getContextUsage().percentage}%)` +
+          (state.session.usage ? `\nLast usage: ${fmtTokensLive(state.session.usage.total_tokens)} tokens` : ``),
           scrollRegionBottom,
         );
       }
@@ -587,10 +587,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (state.agent) {
         const models = state.agent.getDefaultModels();
         const current = state.agent.getModel();
-        const lines = models.map((m) => m === current ? `  * ${m} (当前)` : `  - ${m}`).join("\n");
-        printAssistantBlock(`可用模型：\n${lines}\n\n输入模型名切换，如 deepseek-v4-flash`, scrollRegionBottom);
+        const lines = models.map((m) => m === current ? `  * ${m} (current)` : `  - ${m}`).join("\n");
+        printAssistantBlock(`Available models:\n${lines}\n\nType a model name to switch, e.g. deepseek-v4-flash`, scrollRegionBottom);
       } else {
-        printAssistantBlock("无活跃会话。", scrollRegionBottom);
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -601,10 +601,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         const enable = task === "/deepthink on" || (task === "/deepthink" && !state.agent.getThinking());
         state.agent.setThinking(enable);
         drawModeBar(state);
-        const status = enable ? "启用" : "关闭";
-        printAssistantBlock(`深度思考：${status}\n大模型将${enable ? "" : "不"}在回答前进行深度思考。`, scrollRegionBottom);
+        const status = enable ? "enabled" : "disabled";
+        printAssistantBlock(`Deep thinking: ${status}\nThe model will${enable ? "" : " NOT"} think deeply before answering.`, scrollRegionBottom);
       } else {
-        printAssistantBlock("无活跃会话。", scrollRegionBottom);
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -613,19 +613,19 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/soul") {
       if (state.agent) {
         write(ansi.moveTo(scrollRegionBottom(), 0) + "\n");
-        write(color.yellow("⏳ 正在总结用户习惯...") + "\r");
+        write(color.yellow("⏳ Summarizing soul...") + "\r");
         const content = await state.agent.summarizeSoul();
         if (content) {
           const record = (await import("../soul.js")).SoulManager.load();
           printAssistantBlock(
-            `🧠 用户习惯已更新 (v${record?.version ?? "?"}，约 ${record?.estimatedTokens ?? 0} tokens):\n\n${content}`,
+            `🧠 Soul updated (v${record?.version ?? "?"}, ~${record?.estimatedTokens ?? 0} tokens):\n\n${content}`,
             scrollRegionBottom,
           );
         } else {
-          printAssistantBlock("无法总结用户习惯，请再对话几轮后重试。", scrollRegionBottom);
+          printAssistantBlock("Unable to summarize soul. Try again after a few more conversation rounds.", scrollRegionBottom);
         }
       } else {
-        printAssistantBlock("无活跃会话。", scrollRegionBottom);
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -634,9 +634,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/soul-show") {
       const record = (await import("../soul.js")).SoulManager.load();
       if (record) {
-        printAssistantBlock(`🧠 用户习惯 (v${record.version}，约 ${record.estimatedTokens} tokens):\n\n${record.content}`, scrollRegionBottom);
+        printAssistantBlock(`🧠 Soul (v${record.version}, ~${record.estimatedTokens} tokens):\n\n${record.content}`, scrollRegionBottom);
       } else {
-        printAssistantBlock("尚无用户习惯记录。对话几轮后自动生成，或输入 /soul 强制更新。", scrollRegionBottom);
+        printAssistantBlock("No soul record yet. It will be generated after a few conversation rounds, or type /soul to force update.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -645,7 +645,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     // Switch model by name
     if (state.agent && state.agent.getDefaultModels().includes(task.trim())) {
       state.agent.setModel(task.trim());
-      printAssistantBlock(`模型已切换为：${task.trim()}`, scrollRegionBottom);
+      printAssistantBlock(`Model switched to: ${task.trim()}`, scrollRegionBottom);
       drawPrompt();
       return;
     }
@@ -653,14 +653,14 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (task === "/plan-active") {
       const all = listPlanFiles(workspaceRoot);
       if (all.length === 0) {
-        printAssistantBlock("无目标计划。启动一个 Target 任务来创建计划。", scrollRegionBottom);
+        printAssistantBlock("No active plans. Start a Target task to create one.", scrollRegionBottom);
       } else {
         const lines = all.map((p) => {
           const icon = p.phase === "abandoned" ? "⬜" : p.phase === "done" ? "✅" : "●";
           const shortId = p.id.startsWith("plan-") ? p.id.slice(5) : p.id;
           return `  ${icon} ${shortId}  [${p.phase}] ${p.completedSubGoals}/${p.subGoalCount}  ${p.goal.slice(0, 55)}`;
         }).join("\n");
-        printAssistantBlock(`目标计划（↑↓ 选择，Enter 激活）：\n${lines}`, scrollRegionBottom);
+        printAssistantBlock(`Active plans (↑↓ to select, Enter to activate):\n${lines}`, scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -671,12 +671,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const all = listPlanFiles(workspaceRoot);
       const match = all.find((p) => p.id === idPart || p.id.startsWith(idPart));
       if (!match) {
-        printAssistantBlock(`未找到计划: ${idPart}\n输入 /plan-active 查看列表。`, scrollRegionBottom);
+        printAssistantBlock(`Plan not found: ${idPart}\nType /plan-active to list plans.`, scrollRegionBottom);
       } else {
         try {
           const planData = loadPlanFile(workspaceRoot, match.id);
           if (!planData) {
-            printAssistantBlock(`计划文件损坏: ${match.id}`, scrollRegionBottom);
+            printAssistantBlock(`Plan file corrupted: ${match.id}`, scrollRegionBottom);
           } else {
             const phase = (planData as Record<string, unknown>).phase as string ?? "execute";
             if (phase === "done") (planData as Record<string, unknown>).phase = "review";
@@ -717,15 +717,15 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
             drawModeBar(state);
             printAssistantBlock(
-              `已激活计划: ${match.id.slice(5)}\n` +
-              `目标: ${match.goal}\n` +
-              `进度: ${match.completedSubGoals}/${match.subGoalCount}\n\n` +
-              `输入任意内容继续执行。`,
+              `Plan activated: ${match.id.slice(5)}\n` +
+              `Goal: ${match.goal}\n` +
+              `Progress: ${match.completedSubGoals}/${match.subGoalCount}\n\n` +
+              `Type anything to continue.`,
               scrollRegionBottom,
             );
           }
         } catch (e) {
-          printAssistantBlock(`激活计划失败: ${String(e).slice(0, 100)}`, scrollRegionBottom);
+          printAssistantBlock(`Failed to activate plan: ${String(e).slice(0, 100)}`, scrollRegionBottom);
         }
       }
       drawPrompt();
@@ -741,19 +741,19 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         const afterCtx = state.agent.getContextUsage();
         if (compressed) {
           printAssistantBlock(
-            `上下文已压缩：${beforeLen} → ${afterLen} 条消息\n` +
-            `Token 估算：${fmtTokens(beforeCtx.estimatedTokens)} → ${fmtTokens(afterCtx.estimatedTokens)} ` +
+            `Context compressed: ${beforeLen} → ${afterLen} messages\n` +
+            `Token est.: ${fmtTokens(beforeCtx.estimatedTokens)} → ${fmtTokens(afterCtx.estimatedTokens)} ` +
             `(${beforeCtx.percentage}% → ${afterCtx.percentage}%)`,
             scrollRegionBottom,
           );
         } else {
           printAssistantBlock(
-            `上下文使用率 ${beforeCtx.percentage}%，未达到压缩阈值 (80%)，无需压缩。`,
+            `Context usage ${beforeCtx.percentage}%, below compression threshold (80%). No compression needed.`,
             scrollRegionBottom,
           );
         }
       } else {
-        printAssistantBlock("无活跃会话，无需压缩。", scrollRegionBottom);
+        printAssistantBlock("No active session.", scrollRegionBottom);
       }
       drawPrompt();
       return;
@@ -807,7 +807,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       resetWatchdog();
       if (!streamOpened) {
         beginOutputBlock();
-        write(color.red("chitu: ") + color.dim("思考中..."));
+        write(color.red("chitu: ") + color.dim("thinking..."));
         streamOpened = true;
         state.printingAssistant = true;
         state.thinkingActive = true;
@@ -997,10 +997,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
                 ? "chitu: Target complete — all sub-goals done, review gates passed"
                 : `chitu: ${lastResponse.split("\n")[0]?.trim() ?? "Sub-goal complete"}`;
               execSync(`git commit -m ${JSON.stringify(msg)}`, { cwd: workspaceRoot, timeout: 10000 });
-              write(color.dim("  [yunchang] auto-committed\n"));
+              write(color.dim("  [auto] committed\n"));
             }
           } catch (e) {
-            write(color.dim(`  [yunchang] commit failed: ${String(e).slice(0, 80)}\n`));
+            write(color.dim(`  [auto] commit failed: ${String(e).slice(0, 80)}\n`));
           }
         }
 
@@ -1072,7 +1072,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     write(ansi.bracketedPasteOff);
     resetScrollRegion();
     write(ansi.showCursor);
-    write("\n\n" + color.dim("  赤兔已停。再见。") + "\n\n");
+    write("\n\n" + color.dim("  Chitu stopped. Goodbye.") + "\n\n");
 
     mcpLoader.stopAll().catch((e) => { logger.warn("MCP stopAll failed", { error: String(e) }); });
   }

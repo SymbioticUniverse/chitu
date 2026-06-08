@@ -1,18 +1,18 @@
-// 赤兔 — red horse head pixel art for terminal welcome
+// Chitu — red horse head pixel art for terminal welcome
 // Full-block characters + ANSI true color. Forward-facing, symmetrical.
 const R = (r: number, g: number, b: number) => `\x1b[38;2;${r};${g};${b}m`;
 const BG = (r: number, g: number, b: number) => `\x1b[48;2;${r};${g};${b}m`;
 const RS = "\x1b[0m";
 
 // Palette
-const SKIN = R(200, 40, 35);       // 赤红 — main coat
-const DARK = R(140, 25, 20);       // 暗红 — shadow / nostril
-const LIGHT = R(235, 80, 60);      // 亮红 — highlight
-const MANE = R(170, 30, 20);       // 鬃毛 — darker mane
-const BLAZE = R(255, 230, 210);    // 鼻梁白斑
-const EYE = R(30, 30, 30);         // 眼 — dark
-const EYE_HL = R(255, 255, 255);   // 眼光
-const EAR_IN = R(255, 170, 150);   // 耳内
+const SKIN = R(200, 40, 35);       // main coat red
+const DARK = R(140, 25, 20);       // shadow / nostril
+const LIGHT = R(235, 80, 60);      // highlight
+const MANE = R(170, 30, 20);       // darker mane
+const BLAZE = R(255, 230, 210);    // muzzle blaze
+const EYE = R(30, 30, 30);         // eye
+const EYE_HL = R(255, 255, 255);   // eye highlight
+const EAR_IN = R(255, 170, 150);   // inner ear
 
 /*
     Forward-facing horse head, ~70 cols wide

@@ -59,12 +59,15 @@ function readAllowlistRecord() {
     const allowed = Array.isArray(data.allowed) ? data.allowed : [];
     const guardActive = Boolean(data.guardActive);
     const lockMode = data.lockMode === 'full' ? 'full' : 'pasture';
-    const locked = Boolean(data.locked) && (lockMode === 'full' || allowed.length > 0);
+    const mode = data.mode === 'append-only' ? 'append-only' : 'pasture';
+    const fullLike = lockMode === 'full' || mode === 'append-only';
+    const locked = Boolean(data.locked) && (fullLike || allowed.length > 0);
     return {
       guardActive,
       armed: guardActive && locked,
       allowed,
       lockMode,
+      mode,
       targets: Array.isArray(data.targets) ? data.targets : [],
     };
   } catch {
@@ -115,7 +118,7 @@ function gitIsTracked(rel) {
 }
 
 function computeOverreach(rec, actual) {
-  if (rec.lockMode === 'full') {
+  if (rec.lockMode === 'full' || rec.mode === 'append-only') {
     return actual.filter((f) => {
       if (pathIsUnderAllowlist(f, rec.allowed)) return false;
       if (!gitIsTracked(f)) return false;
@@ -211,7 +214,7 @@ function main() {
   }
   writeCommitBlockedMarker(allowed, overreach);
   const allowText =
-    rec.lockMode === 'full'
+    rec.lockMode === 'full' || rec.mode === 'append-only'
       ? allowed.length
         ? `已解锁老文件：${allowed.join(', ')}`
         : '解耦架构：全部已跟踪文件只读（仅允许新建）'

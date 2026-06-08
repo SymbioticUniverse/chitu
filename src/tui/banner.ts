@@ -1,6 +1,8 @@
 import { renderHorseSmall } from "./horse.js";
-import { ansi, write, getTermSize } from "./screen.js";
+import { ansi, write, getTermSize, color } from "./screen.js";
 import { buildPanel, vlen, vpad } from "./visual.js";
+
+const CHITU_VERSION = "chitu community v0.1.0";
 
 /** Print the startup banner (horse + status panel). Returns the number of lines consumed. */
 export function printStartupBanner(opts: {
@@ -10,6 +12,8 @@ export function printStartupBanner(opts: {
   skillNames: string[];
   commands: { name: string; description: string }[];
   session: boolean;
+  providerName?: string;
+  modelName?: string;
 }): number {
   const { cols } = getTermSize();
   const horse = renderHorseSmall().split("\n");
@@ -69,6 +73,11 @@ export function printStartupBanner(opts: {
     }
     bannerLines = horse.length + 1 + 7 + 8;
   }
+  const provider = opts.providerName ?? "auto";
+  const model = opts.modelName ?? "default";
+  write(color.dim(`  ${CHITU_VERSION}  ·  ${provider} / ${model}`) + "\n");
+  bannerLines += 1;
+
   write("\n");
   bannerLines += 1;
   return bannerLines;

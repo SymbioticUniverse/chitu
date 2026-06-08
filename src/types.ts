@@ -223,13 +223,13 @@ export function detectTaskIntent(content: string): TaskIntent {
       !/write|create|add|implement|fix|refactor|change|update|modify|make/i.test(lower)) {
     return "query";
   }
-  if (/refactor|重构|restruct|重写|redesign|rearchitect|reorg|解耦|拆分|extract|decouple|dedup/i.test(lower)) {
+  if (/refactor|restruct|redesign|rearchitect|reorg|extract|decouple|dedup/i.test(lower)) {
     return "refactor";
   }
   if (/fix|bug|error|crash|broken|not working|doesn't work|fail|issue|problem|repair|debug/i.test(lower)) {
     return "fix";
   }
-  if (/create|add new|implement|new file|新增|新功能|add feature|build|make a|create a|generate|scaffold/i.test(lower)) {
+  if (/create|add new|implement|new file|add feature|build|make a|create a|generate|scaffold/i.test(lower)) {
     return "new_feature";
   }
   return "mixed";

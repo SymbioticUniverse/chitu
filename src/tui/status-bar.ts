@@ -1,5 +1,5 @@
 /**
- * status-bar.ts — 状态栏、模式栏、提示面板、指标辅助
+ * status-bar.ts — Status bar, mode bar, hint panel, metrics helpers
  *
  * Extracted from app.ts startTUI closure.
  */
@@ -95,7 +95,7 @@ export function drawModeBar(state: TUIState): void {
   };
 
   const desc = PARADIGM_DESC[active] ?? "";
-  const label = active === "appraise" ? "Ask" : active === "ride" ? "Target" : "Modify";
+  const label = active === "appraise" ? "Ask" : "Constraint";
   const cycleHint = PARADIGM_CYCLE.includes(active) ? " (shift+tab to cycle · ctrl+j to newline)" : "";
   const thinkingOn = state.agent?.getThinking();
   const thinkingTag = thinkingOn ? " " + color.yellow("[thinking]") : "";
@@ -123,7 +123,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const m = state.lastMetricsSnapshot ?? getLiveMetrics(state.workspaceRoot);
     if (!state.lastMetricsSnapshot) state.lastMetricsSnapshot = m;
 
-    const workingPart = `${spinner} 赤兔工作中 · ${elapsed}`;
+    const workingPart = `${spinner} Chitu working · ${elapsed}`;
 
     const u = state.agent?.getUsage() ?? state.lastKnownUsage;
     const liveComp = Math.ceil(state.liveCompletionChars / 4);

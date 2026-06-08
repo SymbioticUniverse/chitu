@@ -1,6 +1,6 @@
 {
   "name": "chitu",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "赤兔 — 约束自涌现终端 AI Agent。架构不是设计出来的，是锁出来的。",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,8 @@
     "chitu": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "prepare": "npm run build",
+    "build": "tsc && cp -r src/prompts dist/",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "start:dev": "node dist/index.js --dev",

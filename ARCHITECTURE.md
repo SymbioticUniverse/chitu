@@ -157,13 +157,13 @@
 
 ## 三、三种运行模式
 
-| 模式 | 标志 | 范式 | Horsewhip | 提交 | 用途 |
+| Mode | Flag | Paradigm | Horsewhip | Commit | Use |
 |------|------|------|-----------|------|------|
-| TUI 交互 | `chitu` | 可选 | 有 guard | 手动 | 日常对话 |
-| CLI headless | `chitu run --task "..."` | ride | 有 guard | 手动 | 单任务 |
-| CLI auto | `chitu run --task "..." --yunchang` | ride | 有 guard | 自动 | 持续迭代 |
-| CLI 约束 | `chitu run --task "..." --constraint` | constraint | 硬锁 | 自动 | 约束涌现 |
-| Dev | `chitu dev --task "..."` | ride | 关闭 | 手动 | 调试开发 |
+| TUI interactive | `chitu` | Any | Guard | Manual | Daily chat |
+| CLI headless | `chitu run --task "..."` | ride | Guard | Manual | Single task |
+| CLI auto | `chitu run --task "..." --yunchang` | ride | Guard | Auto | Continuous iteration |
+| CLI constraint | `chitu run --task "..." --constraint` | constraint | Hard lock | Auto | Constraint emergence |
+| Dev | `chitu dev --task "..."` | ride | Off | Manual | Debug/dev |
 
 ## 四、约束模式门禁流程
 

@@ -23,33 +23,31 @@ export const WATCHDOG_IDLE_MS = 60_000;
 export type HintItem = { name: string; description: string };
 
 export const COMMANDS: HintItem[] = [
-  { name: "/quit", description: "退出" },
-  { name: "/exit", description: "退出" },
-  { name: "/clear", description: "清屏" },
-  { name: "/compact", description: "压缩上下文" },
-  { name: "/resume", description: "恢复历史会话" },
-  { name: "/help", description: "帮助" },
-  { name: "/metrics", description: "六维指标" },
-  { name: "/health", description: "健康检查" },
-  { name: "/session", description: "会话信息" },
-  { name: "/model", description: "模型切换" },
-  { name: "/deepthink", description: "深度思考开关" },
-  { name: "/plan-active", description: "目标计划管理" },
-  { name: "/soul", description: "查看/更新用户习惯" },
+  { name: "/quit", description: "Quit" },
+  { name: "/exit", description: "Quit" },
+  { name: "/clear", description: "Clear screen" },
+  { name: "/compact", description: "Compress context" },
+  { name: "/resume", description: "Resume session" },
+  { name: "/help", description: "Help" },
+  { name: "/metrics", description: "Metrics" },
+  { name: "/health", description: "Health check" },
+  { name: "/session", description: "Session info" },
+  { name: "/model", description: "Switch model" },
+  { name: "/deepthink", description: "Toggle deep think" },
+  { name: "/plan-active", description: "Manage plans" },
+  { name: "/soul", description: "View/update soul" },
 ];
 
 export const PARADIGM_COLORS: Record<string, string> = {
   appraise: "green",
-  ride: "magenta",
-  spur: "yellow",
+  constraint: "cyan",
 };
 
-export const PARADIGM_CYCLE = ["appraise", "ride", "spur", "constraint"] as const;
+export const PARADIGM_CYCLE: readonly Paradigm[] = ["appraise", "constraint"];
 
 export const PARADIGM_DESC: Record<string, string> = {
   appraise: "Read-only Q&A — Horsewhip fully locked",
-  ride: "Goal-driven full workflow — Horsewhip per sub-goal",
-  spur: "Single-file surgical edit — Horsewhip whip-bound",
+  constraint: "Autonomous iteration — Grow → Trim → Verify → Commit",
 };
 
 // ── Runtime state ──

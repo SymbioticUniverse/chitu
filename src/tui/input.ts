@@ -1,5 +1,5 @@
 /**
- * input.ts — 输入处理
+ * input.ts — Input handling
  *
  * Extracted from app.ts startTUI closure.
  * Handles raw input consumption, history navigation, paste,

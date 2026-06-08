@@ -5,6 +5,7 @@ import { RateLimiter } from "./ratelimit.js";
 import { HorsewhipGuardImpl } from "./horsewhip/guard.js";
 import { loadSystemPrompt } from "./system-prompt.js";
 import { SoulManager } from "./soul.js";
+import { resolveProvider, resolveBaseUrl } from "./global-config.js";
 import { Auditor } from "./auditor.js";
 import { getParadigmPrompt } from "./paradigm.js";
 import { getScoreContext } from "./score.js";
@@ -105,17 +106,18 @@ export class Agent {
     this.workspaceRoot = workspaceRoot;
     this.sessionId = sessionId;
     this.auditor = new Auditor(workspaceRoot, this.taskId);
-    this.provider = createProvider(config.provider ?? "auto", {
+    const resolvedProvider = resolveProvider(config.provider) as ProviderName;
+    this.provider = createProvider(resolvedProvider, {
       apiKey: config.apiKey,
-      baseUrl: config.baseUrl,
+      baseUrl: resolveBaseUrl(config.baseUrl),
       model: config.model,
       thinking: config.thinking,
       reasoningEffort: config.reasoningEffort,
     });
-    this.model = config.model ?? this.provider.defaultModels[0] ?? "deepseek-chat";
+    this.model = config.model ?? this.provider.defaultModels[0] ?? "deepseek-v4-pro";
     this.maxIterations = config.maxIterations ?? 50;
     this.explicitThinking = config.thinking;
-    this.paradigm = config.paradigm ?? "appraise";
+    this.paradigm = config.paradigm ?? "constraint";
     this.paradigmState = { active: this.paradigm, resolved: this.paradigm };
     this.yunchang = config.yunchang ?? false;
     this.mcpLoader = mcpLoader;
@@ -574,7 +576,7 @@ export class Agent {
     onReasoning?: (text: string) => void,
     mode?: import("./types.js").ConstraintMode,
   ): Promise<string> {
-    const MAX_ITERATIONS = 10;
+    const MAX_ITERATIONS = 100;
     const executor = new ConstraintExecutor(this, this.workspaceRoot, mode ?? "creation");
     this.constraintExecutor = executor;
     try {

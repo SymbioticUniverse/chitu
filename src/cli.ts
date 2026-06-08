@@ -19,11 +19,11 @@ interface Args {
   paradigm?: string;
   /** Enable deep thinking / reasoning mode */
   thinking?: boolean;
-  /** 手动模式 (吕布·奉先) — 默认，有 guard */
-  fengxian?: boolean;
-  /** 自动模式 (关羽·云长) — 无 guard，自动 commit */
-  yunchang?: boolean;
-  /** 约束模式 — Horsewhip boundary, iterative sub-goals */
+  /** Manual mode — default, with guard */
+  manual?: boolean;
+  /** Auto mode — with guard, auto commit */
+  auto?: boolean;
+  /** Constraint mode — Horsewhip boundary, iterative sub-goals, auto commit */
   constraint?: boolean;
 }
 
@@ -84,11 +84,13 @@ function parseArgs(argv: string[]): Args {
       case "--thinking":
         args.thinking = true;
         break;
+      case "--manual":
       case "--fengxian":
-        args.fengxian = true;
+        args.manual = true;
         break;
+      case "--auto":
       case "--yunchang":
-        args.yunchang = true;
+        args.auto = true;
         break;
       case "--constraint":
         args.constraint = true;
@@ -109,12 +111,13 @@ function showHelp(): void {
 Chitu (赤兔) — Terminal AI Agent
 
 Usage:
-  chitu                          Fengxian mode (default, manual commit, with guard)
-  chitu --fengxian               Fengxian mode (explicit)
-  chitu --yunchang               Yunchang mode (auto commit, with guard)
-  chitu run --task <task>        Run a new task
+  chitu                          Interactive TUI (Tab to switch Ask / Constraint)
+  chitu --dev                    Developer TUI (no guard)
+  chitu run --task <task>        Run a new task (headless)
+  chitu run --task <task> --auto       Run with auto-commit (headless)
+  chitu run --task <task> --constraint Run with constraint mode (headless)
   chitu resume <session-id>      Resume a previous session
-  chitu dev --task <task>        Developer mode
+  chitu dev --task <task>        Developer mode (headless)
   chitu build                    Compile TypeScript
   chitu sync                     Sync Horsewhip MCP version
   chitu metrics [session-id]     Show six-dimension metrics
@@ -126,15 +129,17 @@ Usage:
 Options:
   --task, -t <task>              Task description
   --session, -s <id>             Session ID
-  --model, -m <model>            Model name (default: deepseek-v4-flash)
+  --model, -m <model>            Model name (default: deepseek-v4-pro)
   --api-key <key>                API key (or set DEEPSEEK_API_KEY env)
   --base-url <url>               API base URL
   --thinking                     Enable deep thinking / reasoning mode
-  --fengxian                     Fengxian mode (manual commit)
-  --yunchang                     Yunchang mode (auto commit)
+  --auto                         Auto-commit mode (for use with \`run\`)
+  --constraint                   Constraint mode (for use with \`run\`)
 
 Environment:
   DEEPSEEK_API_KEY               DeepSeek API key
+  ANTHROPIC_API_KEY              Claude API key
+  OPENAI_API_KEY                 OpenAI API key
 `);
 }
 
@@ -162,7 +167,7 @@ export async function main(argv: string[]): Promise<void> {
         process.exit(1);
       }
 
-      // ── Git 兜底：记下当前 HEAD ──
+      // ── Git safety net: record current HEAD ──
       const { execSync } = await import("node:child_process");
       let headBefore = "";
       try {
@@ -178,7 +183,7 @@ export async function main(argv: string[]): Promise<void> {
       // Unlock everything — we trust ourselves in dev mode
       await horsewhipGuard.unlock();
 
-      console.log("🔧 开发者模式 — 绕过 Horsewhip，直接编辑代码\n");
+      console.log("🔧 Dev mode — bypassing Horsewhip, direct code editing\n");
 
       const session = sessions.create(`[dev] ${args.task}`);
       console.log(`Session: ${session.id}`);
@@ -199,7 +204,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: (args.paradigm as Paradigm | undefined) ?? "ride",
           thinking: args.thinking,
-          yunchang: args.yunchang,
+          yunchang: args.auto,
         }
       );
 
@@ -212,29 +217,29 @@ export async function main(argv: string[]): Promise<void> {
         session.messages = agent.getMessages();
         sessions.save(session);
 
-        // ── 编译验证 ──
-        console.log("\n🔨 编译验证...");
+        // ── Compile check ──
+        console.log("\n🔨 Compile check...");
         try {
           execSync("node scripts/build.mjs", {
             cwd: workspaceRoot,
             stdio: "inherit",
             timeout: 30000,
           });
-          console.log("✅ 编译通过\n");
+          console.log("✅ Compile passed\n");
         } catch {
-          console.error("❌ 编译失败\n");
+          console.error("❌ Compile failed\n");
 
-          // Git 回滚
+          // Git rollback
           if (headBefore) {
-            console.log("🔄 回滚到编辑前状态: git checkout -- .");
+            console.log("🔄 Rolling back to pre-edit state: git checkout -- .");
             execSync("git checkout -- .", {
               cwd: workspaceRoot,
               stdio: "inherit",
               timeout: 10000,
             });
-            console.log("✅ 已回滚到编辑前的 Git HEAD\n");
+            console.log("✅ Rolled back to pre-edit Git HEAD\n");
           } else {
-            console.error("❌ 无 Git HEAD 记录，请手动还原\n");
+            console.error("❌ No Git HEAD recorded, please restore manually\n");
           }
         }
 
@@ -242,15 +247,15 @@ export async function main(argv: string[]): Promise<void> {
       } catch (e) {
         console.error(`\nError: ${String(e)}`);
 
-        // Git 回滚
+        // Git rollback
         if (headBefore) {
-          console.log("🔄 回滚到编辑前状态: git checkout -- .");
+          console.log("🔄 Rolling back to pre-edit state: git checkout -- .");
           execSync("git checkout -- .", {
             cwd: workspaceRoot,
             stdio: "inherit",
             timeout: 10000,
           });
-          console.log("✅ 已回滚到编辑前的 Git HEAD\n");
+          console.log("✅ Rolled back to pre-edit Git HEAD\n");
         }
 
         session.messages = agent.getMessages();
@@ -262,7 +267,7 @@ export async function main(argv: string[]): Promise<void> {
 
     // ─── Dev command: build only ───
     case "build": {
-      console.log("🔨 编译赤兔...");
+      console.log("🔨 Compiling Chitu...");
       const { execSync } = await import("node:child_process");
       try {
         execSync("node scripts/build.mjs", {
@@ -270,9 +275,9 @@ export async function main(argv: string[]): Promise<void> {
           stdio: "inherit",
           timeout: 30000,
         });
-        console.log("✅ 编译通过");
+        console.log("✅ Compile passed");
       } catch {
-        console.error("❌ 编译失败");
+        console.error("❌ Compile failed");
         process.exit(1);
       }
       break;
@@ -296,7 +301,7 @@ export async function main(argv: string[]): Promise<void> {
       console.log(`Task: ${args.task}\n`);
 
       const effectiveGuard = horsewhipGuard;
-      const effectiveParadigm: Paradigm = args.constraint ? "constraint" : args.yunchang ? "ride" : (args.paradigm as Paradigm | undefined) ?? "ride";
+      const effectiveParadigm: Paradigm = args.constraint ? "constraint" : args.auto ? "ride" : (args.paradigm as Paradigm | undefined) ?? "ride";
 
       const agent = new Agent(
         workspaceRoot,
@@ -309,7 +314,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: effectiveParadigm,
           thinking: args.thinking,
-          yunchang: args.yunchang,
+          yunchang: args.auto,
         }
       );
 
@@ -353,7 +358,7 @@ export async function main(argv: string[]): Promise<void> {
               !result.includes("```json")) {
             agent.getMessages().push({
               role: "user",
-              content: "请根据最佳实践自行决定，直接开始生成 plan，不要再问澄清问题。",
+              content: "Please decide based on best practices. Start generating the plan directly without asking further clarification questions.",
             });
             continue;
           }
@@ -407,7 +412,7 @@ export async function main(argv: string[]): Promise<void> {
       console.log(`Task: ${session.task}\n`);
 
       const effectiveGuard = horsewhipGuard;
-      const effectiveParadigm: Paradigm = args.constraint ? "constraint" : args.yunchang ? "ride" : (args.paradigm as Paradigm | undefined) ?? "ride";
+      const effectiveParadigm: Paradigm = args.constraint ? "constraint" : args.auto ? "ride" : (args.paradigm as Paradigm | undefined) ?? "ride";
 
       const agent = new Agent(
         workspaceRoot,
@@ -420,7 +425,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: effectiveParadigm,
           thinking: args.thinking,
-          yunchang: args.yunchang,
+          yunchang: args.auto,
         }
       );
 
@@ -459,7 +464,7 @@ export async function main(argv: string[]): Promise<void> {
               !result.includes("```json")) {
             agent.getMessages().push({
               role: "user",
-              content: "请根据最佳实践自行决定，直接开始生成 plan，不要再问澄清问题。",
+              content: "Please decide based on best practices. Start generating the plan directly without asking further clarification questions.",
             });
             continue;
           }
@@ -500,7 +505,7 @@ export async function main(argv: string[]): Promise<void> {
         process.exit(1);
       }
 
-      // 指标渲染已隐藏
+      // Metrics rendering hidden
       break;
     }
 
@@ -529,7 +534,11 @@ export async function main(argv: string[]): Promise<void> {
         const cfg = loadGlobalConfig();
         if (Object.keys(cfg).length === 0) {
           console.log("No global config set. (~/.chitu/config.json is empty)");
-          console.log("Use 'chitu config set apiKey <key>' to configure.");
+          console.log("");
+          console.log("Quick setup (DeepSeek by default):");
+          console.log("  chitu config set apiKey <key>      # Required: your DeepSeek API key");
+          console.log("  chitu config set provider claude   # Optional: switch to claude or openai");
+          console.log("  chitu config set model <model>     # Optional: e.g. deepseek-v4-pro");
         } else {
           console.log("Global config (~/.chitu/config.json):");
           for (const [k, v] of Object.entries(cfg)) {
@@ -544,7 +553,20 @@ export async function main(argv: string[]): Promise<void> {
         const updates: Record<string, string> = {};
         updates[sub[1]] = sub[2] ?? "";
         saveGlobalConfig(updates);
-        console.log(`✅ Set ${sub[1]} in ~/.chitu/config.json`);
+
+        // Auto-detect provider from API key prefix
+        if (sub[1] === "apiKey" && sub[2]) {
+          const key = sub[2];
+          const cfg = loadGlobalConfig();
+          if (!cfg.provider) {
+            if (key.startsWith("sk-ant")) {
+              saveGlobalConfig({ provider: "claude" });
+              console.log("Detected Claude API key. Set provider to 'claude'.");
+            }
+          }
+        }
+
+        console.log(`Set ${sub[1]} in ~/.chitu/config.json`);
         break;
       }
 
@@ -552,7 +574,7 @@ export async function main(argv: string[]): Promise<void> {
         const cfg = loadGlobalConfig();
         delete (cfg as Record<string, unknown>)[sub[1]];
         writeFileSync(GLOBAL_CONFIG_PATH, JSON.stringify(cfg, null, 2) + "\n", "utf-8");
-        console.log(`✅ Removed ${sub[1]} from ~/.chitu/config.json`);
+        console.log(`Removed ${sub[1]} from ~/.chitu/config.json`);
         break;
       }
 
