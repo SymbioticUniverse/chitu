@@ -2,16 +2,14 @@
 
 <img src="docs/logo.svg" alt="CHITU" width="600" />
 
-**架构不是设计出来的，是锁出来的。**
-
 *Architecture is not designed. It is locked in.*
-
----
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Provider](https://img.shields.io/badge/AI-DeepSeek%20%7C%20Claude%20%7C%20OpenAI-orange.svg?style=flat-square)]()
+
+[中文](README_CN.md)
 
 </div>
 
