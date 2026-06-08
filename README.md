@@ -2,22 +2,24 @@
 
 <img src="docs/logo.svg" alt="CHITU" width="600" />
 
-*Architecture is not designed. It is locked in.*
+**架构不是设计出来的，是锁出来的。**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Provider](https://img.shields.io/badge/AI-DeepSeek%20%7C%20Claude%20%7C%20OpenAI-orange.svg?style=flat-square)]()
 
-[中文](README_CN.md)
+[English](README_EN.md)
 
 </div>
 
 ---
 
-> Chitu is a terminal AI agent powered by **Constraint Emergence** — a paradigm where architecture grows organically from locked interface boundaries rather than upfront design documents.
+> 赤兔（Chitu）是一个终端 AI 智能体，其核心创新是**约束涌现**（Constraint Emergence）——通过 Horsewhip 边界锁定，逐轮固化已完成模块，迫使系统架构从约束中自然生长，而非依赖设计文档。
 
-## Quick Start
+> **本项目基于 [Horsewhip](https://github.com/SymbioticUniverse/horsewhip) 构建。** Horsewhip 是约束涌现的底层引擎，提供边界锁定、文件守卫与自动提交能力。如需完整体验——包括 VS Code / Cursor 插件、实时边界可视化与守卫拦截——请前往 [Horsewhip 项目主页](https://github.com/SymbioticUniverse/horsewhip) 了解详情。
+
+## 快速开始
 
 ```bash
 git clone https://github.com/SymbioticUniverse/chitu.git
@@ -25,43 +27,43 @@ cd chitu && npm install && npm link
 chitu
 ```
 
-First launch walks you through a **setup wizard** — pick your AI provider, paste your API key, done. After that, `chitu` drops you straight into the TUI.
+首次启动会进入**配置向导**——选择 AI 服务商、输入 API Key 即可。之后直接 `chitu` 进入 TUI。
 
 ---
 
-## TUI Interaction
+## TUI 交互
 
-Launch with `chitu` in any project directory. The TUI runs entirely in your terminal — tab to switch modes, type to chat, watch constraint iterations unfold in real time.
+在任意项目目录执行 `chitu` 进入终端交互界面。Tab 切换模式，输入即对话，约束迭代过程实时可见。
 
-### Controls
+### 操作
 
-| Key | Action |
+| 按键 | 功能 |
 |:---|:---|
-| `Tab` | Switch paradigm (Ask ⇄ Constraint) |
-| `Ctrl` + `J` | Newline (multi-line input) |
-| `/help` | Show all commands |
-| `/quit` | Quit |
-| `/clear` | Clear screen |
-| `/compact` | Compress context |
+| `Tab` | 切换范式（Ask ⇄ Constraint） |
+| `Ctrl` + `J` | 换行（多行输入） |
+| `/help` | 显示所有命令 |
+| `/quit` | 退出 |
+| `/clear` | 清屏 |
+| `/compact` | 压缩上下文 |
 
-### Paradigms
+### 范式
 
-| Paradigm | Label | What it does | Files | Commit |
+| 范式 | 标签 | 功能 | 文件 | 自动提交 |
 |:---|:---|:---|---:|:---:|
-| **Ask** `appraise` | <kbd>Ask</kbd> | Read-only Q&A — explore, understand, audit | Locked | — |
-| **Constraint** `constraint` | <kbd>Constraint</kbd> | Autonomous iteration — declare intent, watch it build | New only | Auto |
+| **Ask** `appraise` | <kbd>Ask</kbd> | 只读问答——探索、理解、审计代码 | 全部锁定 | — |
+| **Constraint** `constraint` | <kbd>Constraint</kbd> | 自主迭代——声明意图，自动构建 | 仅新建 | 是 |
 
-> **Ask** is your codebase companion. Ask about architecture, trace dependencies, understand patterns. Horsewhip fully locks all files — zero risk of accidental changes.
+> **Ask** 是你的代码助手。可以询问架构、追踪依赖、理解模式。Horsewhip 完全锁定所有文件，零误改风险。
 
-> **Constraint** is autonomous evolution. Declare a sub-goal. Chitu locks a boundary, writes code within it, verifies everything compiles, and auto-commits only what passes. Rinse and repeat until the entire task is done. No human in the loop.
+> **Constraint** 是自主演化模式。声明子目标，Chitu 锁定边界、在边界内编写代码、验证编译通过，并自动提交通过验证的成果。循环往复直到任务完成，无需人工干预。
 
 ---
 
-## Constraint Emergence
+## 约束涌现
 
-The core insight: if you lock what works and force all new code through a verify-then-commit gate, the architecture converges toward correctness on its own. No design doc needed.
+核心洞见：如果你锁定已完成的部分，并强制所有新代码通过验证-提交关卡，架构会自行收敛到正确状态，无需设计文档。
 
-### The Loop
+### 迭代循环
 
 <div align="center">
 
@@ -70,99 +72,99 @@ The core insight: if you lock what works and force all new code through a verify
  │ lockIntent│ ──→ │  Grow  │ ──→ │  Trim  │ ──→ │  Verify  │ ──→ │  Commit  │
  └──────────┘     └────────┘     └────────┘     └──────────┘     └──────────┘
        ↑                                                                 │
-       └─────────────────── next sub-goal ──────────────────────────────┘
+       └─────────────────── 下一个子目标 ──────────────────────────────┘
 ```
 
 </div>
 
-| Phase | What happens |
+| 阶段 | 说明 |
 |:---|:---|
-| **lockIntent** | Declare a sub-goal + the files it touches. Horsewhip locks existing files — only new files are writable. |
-| **Grow** | The AI writes code inside the boundary, importing from locked modules via their documented interfaces. |
-| **Trim** | Strip dead code, deduplicate, ensure exports are clean and intentional. |
-| **Verify** | Mechanical gates: no empty output → exports are declared → compilation passes → tests pass. |
-| **Commit** | Pass = auto-commit. Fail = auto-rollback + retry with failure feedback. |
+| **lockIntent** | 声明子目标及涉及的文件范围。Horsewhip 锁定已有文件，仅新建文件可写。 |
+| **Grow** | AI 在锁定边界内编写代码，通过已锁定模块的文档化接口进行导入。 |
+| **Trim** | 去除死代码、合并冗余逻辑、确保导出干净且意图明确。 |
+| **Verify** | 机械关卡：输出非空 → 导出已声明 → 编译通过 → 测试通过。 |
+| **Commit** | 通过则自动提交，失败则自动回滚并用失败反馈重试。 |
 
-The boundary creeps forward each iteration — yesterday's new file is today's locked interface. Architecture emerges from the accumulated lock surface.
+边界每一轮都在前移——昨天的"新建文件"就是今天的"锁定接口"。架构从不断积累的锁定表面中涌现。
 
-### Context Orchestration
+### 上下文编排
 
-Autonomous iteration has a context problem: too much history and the AI collapses under bloat; too little and it repeats mistakes. Chitu solves this with a **two-tier model**.
+自主迭代面临上下文难题：记住太多则膨胀崩溃，记住太少则重复犯错。Chitu 用**双层模型**解决这个问题。
 
-| Tier | Contents | Lifetime |
+| 层级 | 内容 | 生命周期 |
 |:---|:---|:---|
-| **Interface Graph** | Module paths, exports, type signatures, dependency edges | Permanent — committed to disk |
-| **Conversation** | Current sub-goal reasoning, tool calls, verification results | One iteration — then compressed |
+| **接口图** | 模块路径、导出、类型签名、依赖关系 | 永久——提交到磁盘 |
+| **对话** | 当前子目标的推理、工具调用、验证结果 | 单次迭代——然后压缩 |
 
 <div align="center">
 
 ```
-  Iteration N                              Iteration N+1
+  第 N 轮迭代                              第 N+1 轮迭代
  ┌──────────────────────┐                 ┌──────────────────────┐
  │                      │                 │                      │
- │  Full conversation   │    compress     │  Interface graph     │
- │  · Tool calls        │  ───────────→   │  of locked modules   │
- │  · AI reasoning      │                 │                      │
- │  · Verification logs │                 │  + New sub-goal      │
+ │  完整对话             │     压缩       │  锁定模块的          │
+ │  · 工具调用           │  ───────────→  │  接口图              │
+ │  · AI 推理            │                 │                      │
+ │  · 验证日志           │                 │  + 新子目标          │
  │                      │                 │                      │
  └──────────────────────┘                 └──────────────────────┘
 ```
 
 </div>
 
-When an iteration completes, the conversation is discarded — but the **interface graph** of newly-locked modules persists. The next iteration starts fresh, reading only the interface graph (not the full source) to understand the codebase. A 10,000-line codebase compresses to roughly 500 lines of interface docs. The AI reads full source only when it needs to modify or deeply understand a specific module.
+每次迭代完成后，对话被丢弃——但新锁定模块的**接口图**会持久化。下一轮迭代从接口图（而非完整源码）开始理解代码库。一万行代码压缩为约五百行接口文档。AI 仅在需要修改或深入理解特定模块时才读取完整源文件。
 
-This is why Chitu doesn't degrade over long tasks: context stays lean, but architectural awareness stays complete.
+这就是 Chitu 在长任务中不会退化的原因：上下文始终精简，但架构感知始终完整。
 
 ---
 
-## How Chitu Differs
+## 与其他工具的区别
 
 | | Copilot / Cursor | OpenHands / SWE-Agent | **Chitu** |
 |:---|:---|:---|:---|
-| **Paradigm** | Completion / Q&A | Instruction execution | **Constraint emergence** |
-| **Architecture** | Human-designed | Human-instructed | **Emerged from locked interfaces** |
-| **Long tasks** | Degrades over time | Context bloat → collapse | **Compressed context, no decay** |
-| **Human involvement** | Continuous | Frequent | **Near zero** |
+| **范式** | 补全 / 问答 | 指令执行 | **约束涌现** |
+| **架构** | 人类设计 | 人类指令 | **从锁定接口中涌现** |
+| **长任务** | 随时间退化 | 上下文膨胀 → 崩溃 | **压缩上下文，不衰减** |
+| **人工介入** | 持续 | 频繁 | **趋近于零** |
 
 ---
 
-## Real-world Results
+## 实战成果
 
-| Project | Scale | Sessions | Human intervention | Outcome |
+| 项目 | 规模 | 会话数 | 人工干预 | 结果 |
 |:---|:---|:---|:---|:---|
-| Supply chain system | 38 modules, 19,419 lines | 6 independent sessions | **Zero** | Clean four-layer architecture, zero circular imports |
-| Chitu self-refactoring | 1,380 → 752 lines | 1 session, 10 iterations | **Zero** | 12 auto-commits, 2 auto-rollbacks, clean split |
+| 供应链系统 | 38 模块, 19,419 行 | 6 个独立会话 | **零** | 四层架构清晰，零循环依赖 |
+| Chitu 自重构 | 1,380 → 752 行 | 1 会话, 10 轮迭代 | **零** | 12 次自动提交, 2 次自动回滚 |
 
 ---
 
-## Architecture
+## 架构
 
 ```
 src/
-├── agent.ts + agent/       # Core loop · context compression · tool dispatch
-├── constraint/             # Constraint engine — lockIntent→Grow→Trim→Verify→Commit
-├── target/                 # Target engine — Clarify→Plan→Execute→Review
-├── horsewhip/              # Boundary guard — lock · audit · boundary-parser
-├── tui/                    # Terminal UI — 12 modules, full keyboard control
-├── providers/              # AI adapters — DeepSeek · Claude · OpenAI · Custom
-├── tools/                  # Agent tools + auto-install (MCP / Skills / CHITU.md)
-├── rollback/               # Safe rollback + anchor points
-├── routing.ts              # Semantic intent routing
-└── types.ts                # Core types
+├── agent.ts + agent/       # 核心循环 · 上下文压缩 · 工具调度
+├── constraint/             # 约束引擎 — lockIntent→Grow→Trim→Verify→Commit
+├── target/                 # Target 引擎 — Clarify→Plan→Execute→Review
+├── horsewhip/              # 边界守卫 — 锁定 · 审计 · 边界解析
+├── tui/                    # 终端 UI — 12 个模块，全键盘操控
+├── providers/              # AI 适配器 — DeepSeek · Claude · OpenAI · Custom
+├── tools/                  # Agent 工具 + 自动安装（MCP / Skills / CHITU.md）
+├── rollback/               # 安全回滚 + 锚点
+├── routing.ts              # 语义意图路由
+└── types.ts                # 核心类型定义
 ```
 
 ---
 
-## CLI Commands
+## CLI 命令
 
-For headless, CI, or scripting use:
+用于无头模式、CI 或脚本调用：
 
 ```bash
-chitu run --task "Build an inventory management system" --constraint
-chitu run --task "Fix the login timeout bug" --auto
+chitu run --task "构建一个库存管理系统" --constraint
+chitu run --task "修复登录超时 bug" --auto
 chitu resume <session-id>
-chitu dev --task "Add unit tests for auth module"
+chitu dev --task "为 auth 模块添加单元测试"
 chitu config set apiKey <key>
 chitu config set provider claude
 chitu metrics [session-id]
@@ -172,26 +174,26 @@ chitu build
 chitu help
 ```
 
-| Option | Description |
+| 选项 | 说明 |
 |:---|:---|
-| `--task, -t <task>` | Task description |
-| `--session, -s <id>` | Session ID (for resume) |
-| `--model, -m <model>` | Model name (default: `deepseek-v4-pro`) |
-| `--api-key <key>` | API key override |
-| `--base-url <url>` | API base URL override |
-| `--thinking` | Enable deep reasoning mode |
-| `--auto` | Auto-commit mode (with `run`) |
-| `--constraint` | Constraint mode (with `run`) |
+| `--task, -t <task>` | 任务描述 |
+| `--session, -s <id>` | 会话 ID（用于恢复） |
+| `--model, -m <model>` | 模型名称（默认：`deepseek-v4-pro`） |
+| `--api-key <key>` | API 密钥覆盖 |
+| `--base-url <url>` | API 基础 URL 覆盖 |
+| `--thinking` | 启用深度推理模式 |
+| `--auto` | 自动提交模式（配合 `run` 使用） |
+| `--constraint` | 约束模式（配合 `run` 使用） |
 
 ---
 
-## Requirements
+## 环境要求
 
 - **Node.js** >= 18
-- **API key** — [DeepSeek](https://platform.deepseek.com) · [Claude](https://console.anthropic.com) · [OpenAI](https://platform.openai.com)
+- **API Key** — [DeepSeek](https://platform.deepseek.com) · [Claude](https://console.anthropic.com) · [OpenAI](https://platform.openai.com)
 
 ---
 
-## License
+## 许可证
 
-[AGPL-3.0](LICENSE) · Made with [Horsewhip](https://github.com/SymbioticUniverse/horsewhip)
+[AGPL-3.0](LICENSE) · 基于 [Horsewhip](https://github.com/SymbioticUniverse/horsewhip) 构建
