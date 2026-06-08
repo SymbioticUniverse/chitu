@@ -29,6 +29,18 @@ chitu
 
 First launch walks you through a **setup wizard** — pick your AI provider, paste your API key, done. After that, `chitu` drops you straight into the TUI.
 
+### Git Dependency
+
+Chitu relies heavily on Git. Boundary locking, auto-commit, and rollback — the entire constraint emergence engine — is built on Git primitives. On startup:
+
+| Scenario | Behavior |
+|:---|:---|
+| Git-initialized project directory | Launches TUI directly |
+| Project directory without Git (`package.json`, `src/`, etc.) | Prompts `Run git init to initialize? [Y/n]`, auto-inits on Enter |
+| Non-project directory (Desktop, Downloads, etc.) | Forces Ask (read-only) mode, directs user to a project directory |
+
+> Constraint mode is unavailable without a Git repo — no repo means no boundary to lock, no history to roll back.
+
 ---
 
 ## TUI Interaction
