@@ -1037,25 +1037,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     handleSubmit, consumeRawInput,
   } = inputHandlers;
 
-  // ── Event loop ──
-
-  process.stdin.on("data", (buf: Buffer) => {
-    state.pendingRawInput += state.decoder.write(buf);
-    consumeRawInput();
-  });
-
-  drawPrompt();
-  drawStatusBarWrapped();
-
-  await new Promise<void>((resolve) => {
-    const check = setInterval(() => {
-      if (!state.running) {
-        clearInterval(check);
-        resolve();
-      }
-    }, 100);
-  });
-
   function cleanup() {
     if (state.cleanupDone) return;
     state.cleanupDone = true;
@@ -1077,6 +1058,30 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     mcpLoader.stopAll().catch((e) => { logger.warn("MCP stopAll failed", { error: String(e) }); });
   }
 
-  process.once("SIGINT", () => { cleanup(); process.exit(0); });
-  process.once("SIGTERM", () => { cleanup(); process.exit(0); });
+  // Register signal handlers before the event loop
+  process.on("SIGINT", () => { state.running = false; cleanup(); process.exit(0); });
+  process.on("SIGTERM", () => { state.running = false; cleanup(); process.exit(0); });
+
+  // ── Event loop ──
+
+  process.stdin.on("data", (buf: Buffer) => {
+    state.pendingRawInput += state.decoder.write(buf);
+    consumeRawInput();
+  });
+
+  drawPrompt();
+  drawStatusBarWrapped();
+
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (!state.running) {
+        clearInterval(check);
+        resolve();
+      }
+    }, 100);
+  });
+
+  cleanup();
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
 }

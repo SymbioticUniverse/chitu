@@ -290,6 +290,12 @@ export function createInputHandlers(
         } else {
           state.pendingRawInput = state.pendingRawInput.slice(1);
         }
+        // Always handle /quit and /exit, even when busy
+        const raw = state.inputBuffer.replace(/\r/g, "").trim();
+        if (raw === "/quit" || raw === "/exit") {
+          state.running = false;
+          return;
+        }
         if (!state.busy) handleSubmit();
         continue;
       }
