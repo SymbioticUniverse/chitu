@@ -255,6 +255,10 @@ export function createInputHandlers(
 
       if (state.pendingRawInput[0] === "\x03") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
+        if (state.busy) {
+          state.taskAbort?.abort();
+          continue;
+        }
         state.running = false;
         // cleanup is handled by app.ts event loop
         return;

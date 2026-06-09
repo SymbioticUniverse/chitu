@@ -535,6 +535,7 @@ export class Agent {
       case "ride": return this.executeTarget(onToken, signal, onToolOutput, onCompress, onReasoning);
       case "constraint": return this.executeConstraint(onToken, signal, onToolOutput, onCompress, onReasoning);
       case "spur": return this.executeShoot(onToken, signal, onToolOutput, onCompress, onReasoning);
+      case "manual": return this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
       default: return this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
     }
   }

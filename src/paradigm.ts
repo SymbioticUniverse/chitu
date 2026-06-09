@@ -105,6 +105,20 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "- Prefer creating new files + importing over modifying locked files",
       ].join("\n");
 
+    case "manual":
+      return [
+        "## Manual Mode",
+        "",
+        "Pure manual mode — no internal boundary locking, no auto-commit. You follow user prompts directly.",
+        "",
+        "**Rules:**",
+        "- Execute exactly what the user asks. No more, no less.",
+        "- No internal Horsewhip locks or gates — you are only constrained by the Horsewhip VS Code / Cursor plugin if active.",
+        "- Read, write, edit, delete — all file operations are allowed as instructed by the user.",
+        "- No auto-commit, no verification gates, no sub-goal orchestration.",
+        "- Be direct and efficient. The user is in full control.",
+      ].join("\n");
+
     default:
       return "";
   }

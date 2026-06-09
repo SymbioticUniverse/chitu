@@ -238,7 +238,7 @@ export function detectTaskIntent(content: string): TaskIntent {
 // ── AI Agent Paradigms ────────────────────────────────────────────
 
 /** AI reasoning paradigm / mode */
-export type Paradigm = "appraise" | "ride" | "spur" | "constraint";
+export type Paradigm = "appraise" | "ride" | "spur" | "constraint" | "manual";
 
 /** Paradigm display config */
 export const PARADIGM_META: Record<Paradigm, { label: string; color: string; desc: string }> = {
@@ -246,6 +246,7 @@ export const PARADIGM_META: Record<Paradigm, { label: string; color: string; des
   ride:       { label: "Target",     color: "magenta", desc: "Goal-driven, full workflow with review gates — Horsewhip boundary guard per sub-goal." },
   spur:       { label: "Modify",     color: "yellow",  desc: "Single-file surgical edit, no refactoring — Horsewhip whip-bound on target file only." },
   constraint: { label: "Constraint", color: "cyan",    desc: "Horsewhip boundary mode — AI proposes boundary, works within it, auto-review + commit." },
+  manual:     { label: "Manual",     color: "yellow",  desc: "Pure manual mode — no internal locks, follows user prompts, only affected by Horsewhip plugin." },
 };
 
 export interface ParadigmState {

@@ -91,7 +91,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     try {
       if (existsSync(paradigmPrefFile)) {
         const data = JSON.parse(readFileSync(paradigmPrefFile, "utf-8"));
-        if (data.paradigm && ["appraise", "constraint"].includes(data.paradigm)) {
+        if (data.paradigm && ["appraise", "constraint", "manual"].includes(data.paradigm)) {
           return data.paradigm;
         }
       }

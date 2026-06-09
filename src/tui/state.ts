@@ -41,13 +41,15 @@ export const COMMANDS: HintItem[] = [
 export const PARADIGM_COLORS: Record<string, string> = {
   appraise: "green",
   constraint: "cyan",
+  manual: "yellow",
 };
 
-export const PARADIGM_CYCLE: readonly Paradigm[] = ["appraise", "constraint"];
+export const PARADIGM_CYCLE: readonly Paradigm[] = ["appraise", "constraint", "manual"];
 
 export const PARADIGM_DESC: Record<string, string> = {
   appraise: "Read-only Q&A — Horsewhip fully locked",
   constraint: "Autonomous iteration — Grow → Trim → Verify → Commit",
+  manual: "Pure manual — no internal locks, follows prompts",
 };
 
 // ── Runtime state ──

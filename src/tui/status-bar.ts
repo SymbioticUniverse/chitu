@@ -91,11 +91,12 @@ export function drawModeBar(state: TUIState): void {
     if (c === "green") return color.green(s);
     if (c === "magenta") return color.magenta(s);
     if (c === "yellow") return color.yellow(s);
+    if (c === "cyan") return color.cyan(s);
     return color.dim(s);
   };
 
   const desc = PARADIGM_DESC[active] ?? "";
-  const label = active === "appraise" ? "Ask" : "Constraint";
+  const label = active === "appraise" ? "Ask" : active === "constraint" ? "Constraint" : "Manual";
   const cycleHint = PARADIGM_CYCLE.includes(active) ? " (shift+tab to cycle · ctrl+j to newline)" : "";
   const thinkingOn = state.agent?.getThinking();
   const thinkingTag = thinkingOn ? " " + color.yellow("[thinking]") : "";
