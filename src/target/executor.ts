@@ -39,7 +39,7 @@ export class TargetExecutor {
     if (guard) guard.unlock();
 
     const userMsg = readUserGoal(this.agent);
-    let state = loadActiveState(this.workspaceRoot);
+    const state = loadActiveState(this.workspaceRoot);
 
     if (state) {
       const pid = state.plan ? toPlanId(state.plan.project) : goalToTempId(userMsg);

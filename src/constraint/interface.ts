@@ -22,7 +22,7 @@ export function getConstraintInterfacesDir(workspaceRoot: string): string {
 
 /** Convert a source file path to a safe filename for the interface doc. */
 function filePathToKey(file: string): string {
-  return file.replace(/[\/\\]/g, "-").replace(/^\./, "") + ".json";
+  return file.replace(/[/\\]/g, "-").replace(/^\./, "") + ".json";
 }
 
 function ifacePath(workspaceRoot: string, file: string): string {

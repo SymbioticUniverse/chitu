@@ -398,7 +398,7 @@ export class ClaudeProvider implements AIProvider {
     let content = "";
     let reasoning = "";
     let aborted = false;
-    let reasoningOut = false;
+    const reasoningOut = false;
     let usage: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } | undefined;
     const toolCalls: Map<
       number,
