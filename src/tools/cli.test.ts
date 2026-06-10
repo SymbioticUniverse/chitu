@@ -16,8 +16,8 @@ describe("cli_exec", () => {
   });
 
   it("lists directory contents", async () => {
-    const result = await cliExec({ command: "ls .chitu/" });
-    expect(result).toContain("sessions");
+    const result = await cliExec({ command: "ls src/" });
+    expect(result).toContain("tui");
   });
 
   it("blocks > redirect", async () => {
