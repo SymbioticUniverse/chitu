@@ -167,6 +167,93 @@ src/
 
 ---
 
+## 提示词体系
+
+Chitu 的 system prompt 由多个模块分层组装，用户可在 `~/.chitu/` 和项目 `.chitu/` 下自定义规则。
+
+### System Prompt 组装顺序
+
+```
+agent.ts → rebuildSystemPrompt()
+  ┌─────────────────────────────────────────────┐
+  │ ① loadSystemPrompt()      ← 主系统提示词    │
+  │ ② PROGRESS_NOTE            ← 进度提示       │
+  │ ③ getScoreContext()        ← 评分上下文     │
+  │ ④ getParadigmPrompt()      ← 范式指令       │
+  │ ⑤ SoulManager.toPrompt()   ← 用户习惯记忆   │
+  └─────────────────────────────────────────────┘
+```
+
+### loadSystemPrompt() 内部 6 层
+
+| 层 | 来源 | 内容 | 可自定义 |
+|:---|:---|:---|:---:|
+| 1 | `prompts/base.md` | 身份定义、行为规范、输出格式 | |
+| 2 | `prompts/engineering.md` | 架构、工作流、指标 | |
+| 3 | `prompts/company.md` | 公司/产品信息 | |
+| 4 | `<项目>/.chitu/CHITU.md` | 用户项目级规则 | ✓ |
+| 5 | `~/.chitu/CHITU.md` | 用户全局规则（跨项目） | ✓ |
+| 6 | `<项目>/.chitu/config.json` | 技术栈、架构、关键文件 | ✓ |
+
+### 用户自定义
+
+创建对应文件即可生效，无需重启：
+
+```bash
+# 项目级规则 — 仅当前项目生效
+echo "本项目使用 Functional Programming 风格" > .chitu/CHITU.md
+
+# 全局规则 — 所有项目生效
+echo "请始终用中文回复" > ~/.chitu/CHITU.md
+```
+
+### 用户习惯记忆
+
+Chitu 自动从对话中总结用户偏好，存入 `.chitu/soul.md`，每次迭代后更新。内容示例：
+
+> 用户偏好：先制定详细计划，模块化分步编码，读写计划与接口文件，交叉验证后迭代。
+
+---
+
+## 扩展体系
+
+### MCP 加载优先级
+
+Chitu 启动时按以下顺序加载 MCP 服务器：
+
+| 优先级 | 配置文件 | 说明 |
+|:---|:---|:---|
+| 1 | `<项目>/.chitu/config.json` → `mcpServers` | 项目级配置 |
+| 2 | `<项目>/.mcp.json` | 兼容 Claude Code |
+| 3 | `~/.chitu/mcp.json` | 全局 MCP 配置 |
+
+Horsewhip MCP 由 `chitu sync` 同步后自动写入 `.chitu/config.json`。
+
+### Skills 加载
+
+Skills 从 `<项目>/.chitu/skills/` 目录自动加载，每个子目录为一个 skill，包含 `skill.json` 或 `skill.yaml`：
+
+```
+.chitu/skills/
+├── horsewhip/skill.json       ← chitu sync 自动同步
+├── horsewhip-lock/skill.json
+├── horsewhip-auto/skill.json
+└── my-custom-skill/skill.json ← 用户自行安装
+```
+
+### 一键安装 MCP / Skills
+
+在 **Manual 模式**下，通过 Agent 工具执行：
+
+```
+mcp_auto_install  → git clone → npm install → 安全扫描 → 注册到 .chitu/config.json
+skill_auto_install → git clone → npm install → 安全扫描 → 写入 .chitu/skills/
+```
+
+安装后重启或 `/mcp-reload` 热加载即可使用。
+
+---
+
 ## CLI 命令
 
 用于无头模式、CI 或脚本调用：

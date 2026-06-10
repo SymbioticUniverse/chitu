@@ -106,17 +106,8 @@ export function loadSystemPrompt(workspaceRoot?: string): string {
       }
     } catch { /* skip */ }
 
-    // Layer 5: Soul (cross-project)
-    try {
-      const soulPath = join(__dirname, "..", ".chitu", "soul.md");
-      if (existsSync(soulPath)) {
-        const soulRaw = readFileSync(soulPath, "utf-8");
-        const soulMatch = soulRaw.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-        if (soulMatch && soulMatch[1]?.trim()) {
-          parts.push("## User Habits\n\n" + soulMatch[1].trim());
-        }
-      }
-    } catch { /* skip */ }
+    // Layer 5: Soul — loaded by SoulManager.toPromptFragment() in rebuildSystemPrompt()
+    // (skip here to avoid duplication)
 
     // Layer 6: Config appendix
     const config = loadConfig();

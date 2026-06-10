@@ -167,6 +167,93 @@ src/
 
 ---
 
+## Prompt Architecture
+
+Chitu's system prompt is assembled from multiple layers. Users can customize rules in `~/.chitu/` and project `.chitu/`.
+
+### System Prompt Assembly Order
+
+```
+agent.ts → rebuildSystemPrompt()
+  ┌─────────────────────────────────────────────┐
+  │ ① loadSystemPrompt()      ← main system prompt │
+  │ ② PROGRESS_NOTE            ← progress note     │
+  │ ③ getScoreContext()        ← score context     │
+  │ ④ getParadigmPrompt()      ← paradigm rules    │
+  │ ⑤ SoulManager.toPrompt()   ← user habits       │
+  └─────────────────────────────────────────────┘
+```
+
+### loadSystemPrompt() — 6 Layers
+
+| Layer | Source | Content | Customizable |
+|:---|:---|:---|:---:|
+| 1 | `prompts/base.md` | Identity, discipline, output rules | |
+| 2 | `prompts/engineering.md` | Architecture, workflow, metrics | |
+| 3 | `prompts/company.md` | Company / product info | |
+| 4 | `<project>/.chitu/CHITU.md` | Per-project user rules | ✓ |
+| 5 | `~/.chitu/CHITU.md` | Global user rules (cross-project) | ✓ |
+| 6 | `<project>/.chitu/config.json` | Tech stack, architecture, key files | ✓ |
+
+### User Customization
+
+Create the file and it takes effect immediately, no restart needed:
+
+```bash
+# Project-level rules — current project only
+echo "This project uses Functional Programming style" > .chitu/CHITU.md
+
+# Global rules — all projects
+echo "Always reply in English" > ~/.chitu/CHITU.md
+```
+
+### User Habit Memory
+
+Chitu automatically summarizes user preferences from conversations and stores them in `.chitu/soul.md`, updated after each iteration. Example:
+
+> User prefers: detailed planning first, modular step-by-step coding, reading and writing plan and interface files, cross-validation before iteration.
+
+---
+
+## Extension System
+
+### MCP Loading Priority
+
+Chitu loads MCP servers at startup in this order:
+
+| Priority | Config File | Note |
+|:---|:---|:---|
+| 1 | `<project>/.chitu/config.json` → `mcpServers` | Project-level |
+| 2 | `<project>/.mcp.json` | Claude Code compatible |
+| 3 | `~/.chitu/mcp.json` | Global MCP config |
+
+Horsewhip MCP is auto-configured by `chitu sync` and written to `.chitu/config.json`.
+
+### Skills Loading
+
+Skills are auto-loaded from `<project>/.chitu/skills/`. Each subdirectory is a skill with a `skill.json` or `skill.yaml` manifest:
+
+```
+.chitu/skills/
+├── horsewhip/skill.json       ← synced by chitu sync
+├── horsewhip-lock/skill.json
+├── horsewhip-auto/skill.json
+└── my-custom-skill/skill.json ← user-installed
+```
+
+### One-click MCP / Skills Install
+
+In **Manual mode**, use agent tools:
+
+```
+mcp_auto_install  → git clone → npm install → security scan → register in .chitu/config.json
+skill_auto_install → git clone → npm install → security scan → write to .chitu/skills/
+```
+
+Restart or `/mcp-reload` to hot-load after installation.
+
+---
+
 ## CLI Commands
 
 For headless, CI, or scripting use:
