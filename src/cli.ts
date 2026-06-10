@@ -10,7 +10,7 @@ import type { Paradigm } from "./types.js";
 import { resolveApiKey, resolveModel, loadGlobalConfig, saveGlobalConfig, GLOBAL_CONFIG_PATH } from "./global-config.js";
 
 interface Args {
-  command: "run" | "resume" | "metrics" | "list" | "dev" | "build" | "sync" | "config" | "help";
+  command: "run" | "resume" | "metrics" | "list" | "dev" | "build" | "sync" | "config" | "help" | "update";
   task?: string;
   sessionId?: string;
   model?: string;
@@ -49,6 +49,10 @@ function parseArgs(argv: string[]): Args {
         break;
       case "sync":
         args.command = "sync";
+        break;
+      case "update":
+      case "upgrade":
+        args.command = "update";
         break;
       case "metrics":
         args.command = "metrics";
@@ -120,6 +124,7 @@ Usage:
   chitu dev --task <task>        Developer mode (headless)
   chitu build                    Compile TypeScript
   chitu sync                     Sync Horsewhip MCP version
+  chitu update                   Update Chitu to latest version
   chitu metrics [session-id]     Show six-dimension metrics
   chitu list                     List all sessions
   chitu config                   Show global config (~/.chitu/config.json)
@@ -287,6 +292,12 @@ export async function main(argv: string[]): Promise<void> {
       const { HorsewhipSync } = await import("./sync.js");
       const syncer = new HorsewhipSync(workspaceRoot);
       await syncer.sync();
+      break;
+    }
+
+    case "update": {
+      const { updateChitu } = await import("./update.js");
+      await updateChitu();
       break;
     }
 

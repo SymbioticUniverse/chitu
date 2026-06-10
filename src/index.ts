@@ -99,6 +99,23 @@ new HorsewhipSync(cwd).autoCheck().then((check) => {
   }
 }).catch((e) => { logger.warn("Horsewhip version check failed", { error: String(e) }); });
 
+// Auto-check chitu self-update on startup (non-blocking)
+try {
+  const { checkForUpdate, findChituRoot, isChituRepo } = await import("./update.js");
+  const chituRoot = findChituRoot();
+  if (isChituRepo(chituRoot)) {
+    // Defer to avoid blocking startup
+    setImmediate(async () => {
+      try {
+        const behind = checkForUpdate(chituRoot);
+        if (behind > 0) {
+          logger.info(`Chitu is ${behind} commit(s) behind. Run \`chitu update\` to get the latest.`);
+        }
+      } catch { /* silent */ }
+    });
+  }
+} catch { /* optional — don't block startup if update module fails */ }
+
 // chitu          → TUI interactive
 // chitu --dev     → TUI dev mode
 // chitu run/resume/metrics/list/config/help → CLI mode
