@@ -94,7 +94,8 @@ if (!existsSync(join(cwd, ".git"))) {
 // Auto-check horsewhip sync on startup (non-blocking)
 new HorsewhipSync(cwd).autoCheck().then((check) => {
   if (check.updateAvailable) {
-    console.log(`Horsewhip ${check.latestVersion} available (current: ${check.currentVersion ?? "none"}). Run \`chitu sync\` to update.`);
+    // Log to file only — don't corrupt TUI stdout
+    logger.info(`Horsewhip ${check.latestVersion} available (current: ${check.currentVersion ?? "none"}). Run \`chitu sync\` to update.`);
   }
 }).catch((e) => { logger.warn("Horsewhip version check failed", { error: String(e) }); });
 
