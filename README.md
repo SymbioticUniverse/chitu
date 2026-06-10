@@ -47,7 +47,7 @@ chitu
 
 | 按键 | 功能 |
 |:---|:---|
-| `Tab` | 切换范式（Ask ⇄ Constraint） |
+| `Tab` | 切换范式（Ask ⇄ Constraint ⇄ Manual） |
 | `Ctrl` + `J` | 换行（多行输入） |
 | `/help` | 显示所有命令 |
 | `/quit` | 退出 |
@@ -60,10 +60,13 @@ chitu
 |:---|:---|:---|---:|:---:|
 | **Ask** `appraise` | <kbd>Ask</kbd> | 只读问答——探索、理解、审计代码 | 全部锁定 | — |
 | **Constraint** `constraint` | <kbd>Constraint</kbd> | 自主迭代——声明意图，自动构建 | 仅新建 | 是 |
+| **Manual** `manual` | <kbd>Manual</kbd> | 手动模式——自由读写，无内部锁，仅受 Horsewhip 插件约束 | 无限制 | — |
 
 > **Ask** 是你的代码助手。可以询问架构、追踪依赖、理解模式。Horsewhip 完全锁定所有文件，零误改风险。
 
 > **Constraint** 是自主演化模式。声明子目标，Chitu 锁定边界、在边界内编写代码、验证编译通过，并自动提交通过验证的成果。循环往复直到任务完成，无需人工干预。
+
+> **Manual** 是纯手动模式，专为配合 Horsewhip 插件使用。此模式下 Chitu 不做任何内部边界锁定或自动提交，完全跟随用户指令自由读写文件。所有安全策略由 Horsewhip 插件在外部执行。**MCP、Skills 等第三方扩展的安装与配置请在 Manual 模式下进行。**
 
 ---
 

@@ -47,7 +47,7 @@ Launch with `chitu` in any project directory. The TUI runs entirely in your term
 
 | Key | Action |
 |:---|:---|
-| `Tab` | Switch paradigm (Ask ⇄ Constraint) |
+| `Tab` | Switch paradigm (Ask ⇄ Constraint ⇄ Manual) |
 | `Ctrl` + `J` | Newline (multi-line input) |
 | `/help` | Show all commands |
 | `/quit` | Quit |
@@ -60,10 +60,13 @@ Launch with `chitu` in any project directory. The TUI runs entirely in your term
 |:---|:---|:---|---:|:---:|
 | **Ask** `appraise` | <kbd>Ask</kbd> | Read-only Q&A — explore, understand, audit | Locked | — |
 | **Constraint** `constraint` | <kbd>Constraint</kbd> | Autonomous iteration — declare intent, watch it build | New only | Auto |
+| **Manual** `manual` | <kbd>Manual</kbd> | Pure manual mode — free read/write, no internal locks, only Horsewhip plugin | Unrestricted | — |
 
 > **Ask** is your codebase companion. Ask about architecture, trace dependencies, understand patterns. Horsewhip fully locks all files — zero risk of accidental changes.
 
 > **Constraint** is autonomous evolution. Declare a sub-goal. Chitu locks a boundary, writes code within it, verifies everything compiles, and auto-commits only what passes. Rinse and repeat until the entire task is done. No human in the loop.
+
+> **Manual** is pure manual mode designed for use with the Horsewhip plugin. No internal boundary locking or auto-commit — Chitu follows your instructions directly, reading and writing files freely. All security policies are enforced externally by the Horsewhip plugin. **Install and configure MCP, Skills, and other third-party extensions in Manual mode.**
 
 ---
 
