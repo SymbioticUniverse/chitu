@@ -1,11 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { MCPClient } from "./client.js";
 import type { MCPServerConfig, MCPToolDef, ToolDef, ToolHandler } from "../types.js";
 import { logger } from "../logger.js";
-
-const require = createRequire(import.meta.url);
 
 interface MCPManifest {
   mcpServers?: Record<string, MCPServerConfig>;
@@ -69,25 +67,26 @@ export class MCPLoader {
     }
 
     // Fallback: auto-load vendored horsewhip MCP
+    // Look in: workspace root, chitu install root (via argv), and chitu package root (via module URL)
     const vendorMcp = path.join(this.workspaceRoot, "horsewhip", "mcp", "index.js");
     const chituRoot = (() => {
-      try {
-        const { realpathSync } = require("node:fs");
-        const { dirname } = require("node:path");
-        const p = realpathSync(process.argv[1] ?? "");
-        return dirname(dirname(p)); // dist/index.js → dist/ → root
-      } catch { return ""; }
+      try { return path.dirname(path.dirname(fs.realpathSync(process.argv[1] ?? ""))); } catch { return ""; }
     })();
-    const chituVendor = chituRoot ? path.join(chituRoot, "horsewhip", "mcp", "index.js") : "";
-    const mcpPath = fs.existsSync(vendorMcp) ? vendorMcp : fs.existsSync(chituVendor) ? chituVendor : "";
-    const mcpCwd = mcpPath === vendorMcp ? this.workspaceRoot : chituRoot;
-    const mcpArgs = mcpPath === vendorMcp ? ["horsewhip/mcp/index.js"] : [chituVendor];
+    const pkgRoot = (() => {
+      try { return path.dirname(path.dirname(fileURLToPath(import.meta.url))); } catch { return ""; }
+    })();
+    const candidates = [
+      vendorMcp,
+      chituRoot ? path.join(chituRoot, "horsewhip", "mcp", "index.js") : "",
+      pkgRoot ? path.join(pkgRoot, "horsewhip", "mcp", "index.js") : "",
+    ];
+    const mcpPath = candidates.find((c) => c && fs.existsSync(c)) ?? "";
 
     if (mcpPath) {
       try {
         await this.loadServer("horsewhip", {
           command: "node",
-          args: mcpArgs,
+          args: [mcpPath],
           env: { HORSEWHIP_WORKSPACE: "${workspaceRoot}" },
           alwaysLoad: true,
         });
