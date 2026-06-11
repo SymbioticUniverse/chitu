@@ -73,7 +73,7 @@ export class MCPLoader {
       try { return path.dirname(path.dirname(fs.realpathSync(process.argv[1] ?? ""))); } catch { return ""; }
     })();
     const pkgRoot = (() => {
-      try { return path.dirname(path.dirname(fileURLToPath(import.meta.url))); } catch { return ""; }
+      try { return path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))); } catch { return ""; }
     })();
     const candidates = [
       vendorMcp,
