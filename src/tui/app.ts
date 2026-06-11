@@ -805,13 +805,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     const onReasoning = (_text: string) => {
       resetWatchdog();
-      if (!streamOpened) {
-        beginOutputBlock();
-        write(color.red("chitu: ") + color.dim("thinking..."));
-        streamOpened = true;
-        state.printingAssistant = true;
-        state.thinkingActive = true;
-      }
+      state.thinkingActive = true;
     };
 
     const onToken = (text: string) => {
@@ -820,12 +814,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (!normalized) return;
       state.liveCompletionChars += text.length;
 
-      if (state.thinkingActive) {
-        write("\r" + ansi.clearLine + color.red("chitu: ") + color.dim("[thinked]") + "\n");
-        state.thinkingActive = false;
-      }
-
       if (!streamOpened) {
+        if (state.thinkingActive) state.thinkingActive = false;
         beginOutputBlock();
         write(color.red("chitu: "));
         streamOpened = true;
@@ -835,8 +825,17 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       startStreamDrain(state);
     };
 
+    // Redact API keys and secrets from tool output
+    const redactSecrets = (s: string): string => {
+      return s
+        .replace(/sk-(?:ant-)?[a-zA-Z0-9_-]{20,}/g, "sk-***REDACTED***")
+        .replace(/apiKey["\s:]+["']([^"']{10,})["']/gi, 'apiKey": "***REDACTED***"')
+        .replace(/Bearer\s+[a-zA-Z0-9._-]{20,}/g, "Bearer ***REDACTED***");
+    };
+
     const onToolOutput = (toolName: string, output: string) => {
       resetWatchdog();
+      const sanitized = redactSecrets(output);
       if (toolName === "phase") {
         if (!streamOpened) {
           beginOutputBlock();
@@ -844,7 +843,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           streamOpened = true;
           state.printingAssistant = true;
         }
-        write(color.dim(output) + "\n");
+        write(color.dim(sanitized) + "\n");
         return;
       }
 
@@ -854,21 +853,23 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         streamOpened = true;
         state.printingAssistant = true;
       }
-      const lines = output.split("\n");
-      const maxLines = 15;
-      const truncated = lines.length > maxLines;
-      const displayLines = lines.slice(0, maxLines);
-      const lineCount = lines.length;
-      const sizeStr = output.length > 1024 ? `${(output.length / 1024).toFixed(1)}KB` : `${output.length}B`;
-
       const fileOpIcon = toolName === "write_file" ? "+" : toolName === "edit_file" ? "~" : toolName === "delete_file" ? "-" : "";
-      const headerColor = fileOpIcon ? color.yellow : color.dim;
-      write(headerColor(`── ${fileOpIcon ? fileOpIcon + " " : ""}tool: ${toolName} · ${lineCount} lines · ${sizeStr} ──`) + "\n");
-      for (const line of displayLines) {
-        write(color.dim("  ") + color.dim(line.slice(0, 200)) + "\n");
-      }
-      if (truncated) {
-        write(color.dim(`  ... ${lineCount - maxLines} more lines not shown`) + "\n");
+      // read-only tools: just a one-liner, no content dump
+      if (!fileOpIcon) {
+        write(color.dim(`  (${toolName})`) + "\n");
+      } else {
+        const headerColor = fileOpIcon ? color.yellow : color.dim;
+        const lines = sanitized.split("\n");
+        const maxLines = 15;
+        const truncated = lines.length > maxLines;
+        const displayLines = lines.slice(0, maxLines);
+        write(headerColor(`── ${fileOpIcon} tool: ${toolName} · ${lines.length} lines ──`) + "\n");
+        for (const line of displayLines) {
+          write(color.dim("  ") + color.dim(line.slice(0, 200)) + "\n");
+        }
+        if (truncated) {
+          write(color.dim(`  ... ${lines.length - maxLines} more lines not shown`) + "\n");
+        }
       }
     };
 
@@ -1045,6 +1046,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     state.taskAbort = null;
 
     if (state.agent) state.agent.abort();
+
+    // Delete the current TUI session — TUI is ephemeral, not persistent
+    if (state.session) {
+      try { state.sessions.delete(state.session.id); } catch { /* best effort */ }
+    }
 
     stopStreamDrain(state);
     stopStatusBar(state, statusBarDeps);
