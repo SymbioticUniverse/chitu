@@ -642,6 +642,22 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       return;
     }
 
+    if (task === "/update") {
+      import("../update.js").then(({ updateChitu }) => {
+        updateChitu().then(() => {
+          write(color.green("\n✅ Update completed. Restart Chitu to use the new version.") + "\n");
+          drawPrompt(true);
+        }).catch((e) => {
+          write(color.red(`\n❌ Update failed: ${String(e).slice(0, 200)}`) + "\n");
+          drawPrompt(true);
+        });
+      }).catch((e) => {
+        write(color.red(`\n❌ Update module not available: ${String(e).slice(0, 200)}`) + "\n");
+        drawPrompt(true);
+      });
+      return;
+    }
+
     // Switch model by name
     if (state.agent && state.agent.getDefaultModels().includes(task.trim())) {
       state.agent.setModel(task.trim());
@@ -998,6 +1014,22 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       state.pendingImages = [];
       updateScrollRegion();
       drawPrompt();
+
+      // Process queued messages (user typed while busy)
+      if (state.messageQueue.length > 0) {
+        const nextTask = state.messageQueue.shift()!;
+        const { cleanText, imagePaths } = detectImages(nextTask);
+        state.pendingImages = imagePaths;
+        clearInputBox();
+        beginOutputBlock();
+        const taskLines = nextTask.split("\n");
+        write(color.bold(color.white(`> ${taskLines[0] ?? ""}`)) + "\n");
+        for (let i = 1; i < taskLines.length; i++) {
+          write(color.bold(color.white(`  ${taskLines[i] ?? ""}`)) + "\n");
+        }
+        setImmediate(() => handleTask(cleanText));
+        return;
+      }
 
       // YunChang auto-continuation + auto-commit
       if (state.yunchang && lastResponse && state.agent) {

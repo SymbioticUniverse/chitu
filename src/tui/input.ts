@@ -196,20 +196,37 @@ export function createInputHandlers(
       }
     }
 
+    if (raw.length === 0) {
+      state.inputBuffer = "";
+      state.historyIndex = -1;
+      state.historyDraft = "";
+      drawPrompt();
+      return;
+    }
+
+    // Queue message if busy (LLM is working)
+    if (state.busy) {
+      state.messageQueue.push(raw);
+      state.inputBuffer = "";
+      state.historyIndex = -1;
+      state.historyDraft = "";
+      clearInputBox();
+      drawPrompt();
+      const n = state.messageQueue.length;
+      write(color.dim(`\n  ⏳ Queued (${n} message${n > 1 ? "s" : ""} waiting...)`) + "\n");
+      return;
+    }
+
     state.inputBuffer = "";
     state.historyIndex = -1;
     state.historyDraft = "";
-    if (raw.length === 0) {
-      drawPrompt();
-      return;
+    if ((state.inputHistory.length === 0 || state.inputHistory[state.inputHistory.length - 1] !== raw) && raw.trim().length > 0) {
+      state.inputHistory.push(raw);
     }
 
     const { cleanText, imagePaths } = detectImages(raw);
     state.pendingImages = imagePaths;
 
-    if ((state.inputHistory.length === 0 || state.inputHistory[state.inputHistory.length - 1] !== raw) && raw.trim().length > 0) {
-      state.inputHistory.push(raw);
-    }
     clearInputBox();
     beginOutputBlock();
     const taskLines = raw.split("\n");
@@ -275,7 +292,8 @@ export function createInputHandlers(
       }
       if (state.pendingRawInput.startsWith("\x1b[27;2;13~")) {
         state.pendingRawInput = state.pendingRawInput.slice(10);
-        if (!state.busy) { appendInputChunk("\n"); drawPrompt(); }
+        appendInputChunk("\n");
+        drawPrompt();
         continue;
       }
       if (state.pendingRawInput[0] === "\x1b") {
@@ -285,7 +303,7 @@ export function createInputHandlers(
       }
       if (state.pendingRawInput[0] === "\x7f" || state.pendingRawInput[0] === "\b") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
-        if (!state.busy) handleBackspace();
+        handleBackspace();
         continue;
       }
       if (state.pendingRawInput[0] === "\r") {
@@ -300,25 +318,21 @@ export function createInputHandlers(
           state.running = false;
           return;
         }
-        if (!state.busy) handleSubmit();
+        handleSubmit();
         continue;
       }
       if (state.pendingRawInput[0] === "\n") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
-        if (!state.busy) {
-          appendInputChunk("\n");
-          drawPrompt();
-        }
+        appendInputChunk("\n");
+        drawPrompt();
         continue;
       }
 
       const cp = state.pendingRawInput.codePointAt(0)!;
       const ch = String.fromCodePoint(cp);
       state.pendingRawInput = state.pendingRawInput.slice(cp > 0xFFFF ? 2 : 1);
-      if (!state.busy) {
-        appendInputChunk(sanitizeInputChunk(ch));
-        drawPrompt();
-      }
+      appendInputChunk(sanitizeInputChunk(ch));
+      drawPrompt();
     }
   };
 

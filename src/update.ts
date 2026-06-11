@@ -62,6 +62,14 @@ export async function updateChitu(): Promise<void> {
     process.exit(1);
   }
 
+  try {
+    console.log("");
+    execSync("npm run build", { cwd: root, stdio: "inherit" });
+  } catch {
+    console.error("\nError: build failed. Try running 'npm run build' manually.");
+    process.exit(1);
+  }
+
   console.log("");
   console.log("Chitu updated successfully. Restart to use the new version.");
 }

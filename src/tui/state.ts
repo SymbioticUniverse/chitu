@@ -36,6 +36,7 @@ export const COMMANDS: HintItem[] = [
   { name: "/deepthink", description: "Toggle deep think" },
   { name: "/plan-active", description: "Manage plans" },
   { name: "/soul", description: "View/update soul" },
+  { name: "/update", description: "Update Chitu" },
 ];
 
 export const PARADIGM_COLORS: Record<string, string> = {
@@ -139,6 +140,7 @@ export interface TUIState {
   // task
   pendingImages: string[];
   autoContinueCount: number;
+  messageQueue: string[];
 
   // config flags
   skipGuard: boolean;
@@ -233,6 +235,7 @@ export function createTUIState(
 
     pendingImages: [],
     autoContinueCount: 0,
+    messageQueue: [],
 
     skipGuard: config.skipGuard ?? false,
     dev: config.dev ?? false,

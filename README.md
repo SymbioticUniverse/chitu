@@ -53,6 +53,8 @@ chitu
 | `/quit` | 退出 |
 | `/clear` | 清屏 |
 | `/compact` | 压缩上下文 |
+| `/update` | 一键更新到最新版本 |
+| 输入文字 | LLM 运行时也可打字，发送后排队，任务完成后自动消费 |
 
 ### 范式
 
@@ -268,6 +270,8 @@ chitu config set provider claude
 chitu metrics [session-id]
 chitu list
 chitu sync
+chitu update
+chitu uninstall
 chitu build
 chitu help
 ```

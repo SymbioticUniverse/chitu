@@ -146,9 +146,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
-    write(ansi.saveCursor);
     write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-    write(ansi.restoreCursor);
   } else {
     const u = state.agent?.getUsage() ?? state.lastKnownUsage;
     const target = u?.totalTokens ?? 0;
@@ -165,9 +163,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
-    write(ansi.saveCursor);
     write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-    write(ansi.restoreCursor);
   }
   state.statusBarDrawn = true;
   state.statusBarTopRow = barRow;
@@ -175,9 +171,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
 export function clearStatusBar(state: TUIState): void {
   if (!state.statusBarDrawn) return;
-  write(ansi.saveCursor);
   write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine);
-  write(ansi.restoreCursor);
   state.statusBarDrawn = false;
 }
 
@@ -196,11 +190,15 @@ export function startStatusBar(state: TUIState, deps: StatusBarDeps): void {
   state.animCacheRate = 0;
   drawStatusBar(state, deps);
   state.statusInterval = setInterval(() => {
-    if (state.busy && state.statusFrameIdx % 4 === 0) {
-      state.lastMetricsSnapshot = getLiveMetrics(state.workspaceRoot);
+    try {
+      if (state.busy && state.statusFrameIdx % 4 === 0) {
+        state.lastMetricsSnapshot = getLiveMetrics(state.workspaceRoot);
+      }
+      clearStatusBar(state);
+      drawStatusBar(state, deps);
+    } catch {
+      // prevent interval death from transient errors (e.g. terminal resize race)
     }
-    clearStatusBar(state);
-    drawStatusBar(state, deps);
   }, 150);
 }
 

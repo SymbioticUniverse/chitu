@@ -53,6 +53,8 @@ Launch with `chitu` in any project directory. The TUI runs entirely in your term
 | `/quit` | Quit |
 | `/clear` | Clear screen |
 | `/compact` | Compress context |
+| `/update` | Update Chitu in one click |
+| Type while busy | Type and send messages while LLM works — queued, processed when done |
 
 ### Paradigms
 
@@ -268,6 +270,8 @@ chitu config set provider claude
 chitu metrics [session-id]
 chitu list
 chitu sync
+chitu update
+chitu uninstall
 chitu build
 chitu help
 ```
