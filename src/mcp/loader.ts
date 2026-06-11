@@ -1,8 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createRequire } from "node:module";
 import { MCPClient } from "./client.js";
 import type { MCPServerConfig, MCPToolDef, ToolDef, ToolHandler } from "../types.js";
 import { logger } from "../logger.js";
+
+const require = createRequire(import.meta.url);
 
 interface MCPManifest {
   mcpServers?: Record<string, MCPServerConfig>;
@@ -67,11 +70,24 @@ export class MCPLoader {
 
     // Fallback: auto-load vendored horsewhip MCP
     const vendorMcp = path.join(this.workspaceRoot, "horsewhip", "mcp", "index.js");
-    if (fs.existsSync(vendorMcp)) {
+    const chituRoot = (() => {
+      try {
+        const { realpathSync } = require("node:fs");
+        const { dirname } = require("node:path");
+        const p = realpathSync(process.argv[1] ?? "");
+        return dirname(dirname(p)); // dist/index.js → dist/ → root
+      } catch { return ""; }
+    })();
+    const chituVendor = chituRoot ? path.join(chituRoot, "horsewhip", "mcp", "index.js") : "";
+    const mcpPath = fs.existsSync(vendorMcp) ? vendorMcp : fs.existsSync(chituVendor) ? chituVendor : "";
+    const mcpCwd = mcpPath === vendorMcp ? this.workspaceRoot : chituRoot;
+    const mcpArgs = mcpPath === vendorMcp ? ["horsewhip/mcp/index.js"] : [chituVendor];
+
+    if (mcpPath) {
       try {
         await this.loadServer("horsewhip", {
           command: "node",
-          args: ["horsewhip/mcp/index.js"],
+          args: mcpArgs,
           env: { HORSEWHIP_WORKSPACE: "${workspaceRoot}" },
         });
       } catch { /* vendored MCP failed to start */ }
