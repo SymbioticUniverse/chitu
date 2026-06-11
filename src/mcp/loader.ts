@@ -60,8 +60,21 @@ export class MCPLoader {
         const servers = manifest.mcpServers ?? {};
         if (Object.keys(servers).length > 0) {
           await this.loadServers(servers);
+          return;
         }
       } catch { /* fall through */ }
+    }
+
+    // Fallback: auto-load vendored horsewhip MCP
+    const vendorMcp = path.join(this.workspaceRoot, "horsewhip", "mcp", "index.js");
+    if (fs.existsSync(vendorMcp)) {
+      try {
+        await this.loadServer("horsewhip", {
+          command: "node",
+          args: ["horsewhip/mcp/index.js"],
+          env: { HORSEWHIP_WORKSPACE: "${workspaceRoot}" },
+        });
+      } catch { /* vendored MCP failed to start */ }
     }
   }
 

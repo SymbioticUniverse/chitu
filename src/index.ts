@@ -31,6 +31,15 @@ function isProjectDirectory(dir: string): boolean {
 }
 
 // ── Global error handling ──
+
+// Suppress macOS permission noise from stderr
+const _origStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = ((chunk: any, encoding?: any, cb?: any): boolean => {
+  const s = typeof chunk === "string" ? chunk : chunk?.toString() ?? "";
+  if (s.includes("could not open directory") && s.includes(".Trash")) return true;
+  return _origStderrWrite(chunk, encoding, cb) as boolean;
+}) as typeof process.stderr.write;
+
 process.on("uncaughtException", (err) => {
   console.error("❌ Uncaught exception:", err);
   process.exitCode = 1;
