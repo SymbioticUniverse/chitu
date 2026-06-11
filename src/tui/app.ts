@@ -1051,7 +1051,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (state.session) {
       try { state.sessions.delete(state.session.id); } catch { /* best effort */ }
     }
-    // If running inside the Chitu project itself, nuke all runtime junk
+    // If running inside the Chitu project itself, purge runtime junk but keep installed tools
     try {
       const isChituProject = existsSync(join(workspaceRoot, "src", "agent.ts")) &&
                              existsSync(join(workspaceRoot, "dist", "index.js")) &&
@@ -1059,10 +1059,18 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (isChituProject) {
         const chituDir = join(workspaceRoot, ".chitu");
         if (existsSync(chituDir)) {
-          for (const entry of readdirSync(chituDir)) {
-            const p = join(chituDir, entry);
-            try { rmSync(p, { recursive: true, force: true }); } catch { /* skip */ }
+          // Runtime junk to purge — sessions, plans, context, memory, logs
+          const transient = ["sessions", "plans", "memory", "context", "interfaces", "completions", "backups"];
+          for (const name of transient) {
+            const p = join(chituDir, name);
+            try { if (existsSync(p)) rmSync(p, { recursive: true, force: true }); } catch { /* skip */ }
           }
+          // Transient files
+          for (const name of ["paradigm.json", "checkpoint.json", "watchdog.json", "soul.md"]) {
+            const p = join(chituDir, name);
+            try { if (existsSync(p)) rmSync(p, { force: true }); } catch { /* skip */ }
+          }
+          // KEEP: config.json (MCP), skills/, mcp-servers/
         }
       }
     } catch { /* best effort */ }
