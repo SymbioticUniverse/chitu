@@ -93,6 +93,17 @@ export class MCPLoader {
       } catch (e) {
         logger.warn("vendored horsewhip MCP failed", { path: mcpPath, error: String(e) });
       }
+    } else {
+      try {
+        const logLine = [
+          `[${new Date().toISOString()}] MCP fallback miss`,
+          `  workspaceRoot=${this.workspaceRoot}`,
+          `  argv[1]=${process.argv[1] ?? "none"}`,
+          `  candidates=[${candidates.map((c) => (c || "(empty)") + " exists=" + (c ? fs.existsSync(c) : false)).join(", ")}]`,
+          "",
+        ].join("\n");
+        fs.appendFileSync("/tmp/chitu-mcp-debug.log", logLine);
+      } catch { /* silent */ }
     }
   }
 

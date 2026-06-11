@@ -6,6 +6,7 @@ import * as readline from "node:readline";
 import { loadGlobalConfig, saveGlobalConfig } from "../global-config.js";
 import { ansi, write, color, getTermSize } from "./screen.js";
 import { renderHorseSmall } from "./horse.js";
+import { getChituVersion } from "../version.js";
 
 export interface SetupResult {
   provider: string;
@@ -37,7 +38,7 @@ export async function runSetup(): Promise<SetupResult> {
   const horse = renderHorseSmall().split("\n");
   const { cols } = getTermSize();
   for (const line of horse) write(line + "\n");
-  write(color.dim(`  chitu community v0.1.0 — first-run setup`) + "\n");
+  write(color.dim(`  ${getChituVersion()} — first-run setup`) + "\n");
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const ask = (q: string): Promise<string> => new Promise((resolve) => rl.question(q, resolve));

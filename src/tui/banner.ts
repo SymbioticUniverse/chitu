@@ -1,8 +1,9 @@
 import { renderHorseSmall } from "./horse.js";
 import { ansi, write, getTermSize, color } from "./screen.js";
 import { buildPanel, vlen, vpad } from "./visual.js";
+import { getChituVersion } from "../version.js";
 
-const CHITU_VERSION = "chitu community v0.1.0";
+const CHITU_VERSION = getChituVersion();
 
 /** Print the startup banner (horse + status panel). Returns the number of lines consumed. */
 export function printStartupBanner(opts: {
