@@ -417,7 +417,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (task === "/clear") {
       clearInputBox();
-      clearStatusBar(state);
+      clearStatusBar(state, statusBarDeps);
       state.statusBarDrawn = false;
       write(ansi.clear + ansi.moveTo(0, 0));
       updateScrollRegion();

@@ -147,6 +147,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const trimmed = vtrunc(fullLine, cols);
 
     write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
+    write(ansi.moveTo(deps.scrollRegionBottom(), 0));
   } else {
     const u = state.agent?.getUsage() ?? state.lastKnownUsage;
     const target = u?.totalTokens ?? 0;
@@ -164,14 +165,16 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const trimmed = vtrunc(fullLine, cols);
 
     write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
+    write(ansi.moveTo(deps.scrollRegionBottom(), 0));
   }
   state.statusBarDrawn = true;
   state.statusBarTopRow = barRow;
 }
 
-export function clearStatusBar(state: TUIState): void {
+export function clearStatusBar(state: TUIState, deps: StatusBarDeps): void {
   if (!state.statusBarDrawn) return;
   write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine);
+  write(ansi.moveTo(deps.scrollRegionBottom(), 0));
   state.statusBarDrawn = false;
 }
 
@@ -194,7 +197,7 @@ export function startStatusBar(state: TUIState, deps: StatusBarDeps): void {
       if (state.busy && state.statusFrameIdx % 4 === 0) {
         state.lastMetricsSnapshot = getLiveMetrics(state.workspaceRoot);
       }
-      clearStatusBar(state);
+      clearStatusBar(state, deps);
       drawStatusBar(state, deps);
     } catch {
       // prevent interval death from transient errors (e.g. terminal resize race)
