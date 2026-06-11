@@ -89,8 +89,11 @@ export class MCPLoader {
           command: "node",
           args: mcpArgs,
           env: { HORSEWHIP_WORKSPACE: "${workspaceRoot}" },
+          alwaysLoad: true,
         });
-      } catch { /* vendored MCP failed to start */ }
+      } catch (e) {
+        logger.warn("vendored horsewhip MCP failed", { path: mcpPath, error: String(e) });
+      }
     }
   }
 
