@@ -805,7 +805,13 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     const onReasoning = (_text: string) => {
       resetWatchdog();
-      state.thinkingActive = true;
+      if (!streamOpened) {
+        beginOutputBlock();
+        write(color.red("chitu: ") + color.dim("thinking..."));
+        streamOpened = true;
+        state.printingAssistant = true;
+        state.thinkingActive = true;
+      }
     };
 
     const onToken = (text: string) => {
@@ -814,8 +820,14 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (!normalized) return;
       state.liveCompletionChars += text.length;
 
+      if (state.thinkingActive) {
+        write("\r" + ansi.clearLine + color.red("chitu: "));
+        state.thinkingActive = false;
+        streamOpened = true;
+        state.printingAssistant = true;
+      }
+
       if (!streamOpened) {
-        if (state.thinkingActive) state.thinkingActive = false;
         beginOutputBlock();
         write(color.red("chitu: "));
         streamOpened = true;
