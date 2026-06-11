@@ -146,8 +146,10 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
-    write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-    write(ansi.moveTo(deps.scrollRegionBottom(), 0));
+    write(
+      ansi.saveCursor +
+      ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed) +
+      ansi.restoreCursor);
   } else {
     const u = state.agent?.getUsage() ?? state.lastKnownUsage;
     const target = u?.totalTokens ?? 0;
@@ -164,8 +166,10 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
-    write(ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed));
-    write(ansi.moveTo(deps.scrollRegionBottom(), 0));
+    write(
+      ansi.saveCursor +
+      ansi.moveTo(barRow, 0) + ansi.clearLine + color.dim(trimmed) +
+      ansi.restoreCursor);
   }
   state.statusBarDrawn = true;
   state.statusBarTopRow = barRow;
@@ -173,8 +177,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
 export function clearStatusBar(state: TUIState, deps: StatusBarDeps): void {
   if (!state.statusBarDrawn) return;
-  write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine);
-  write(ansi.moveTo(deps.scrollRegionBottom(), 0));
+  write(ansi.saveCursor + ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + ansi.restoreCursor);
   state.statusBarDrawn = false;
 }
 
@@ -229,8 +232,7 @@ export function stopStatusBar(state: TUIState, deps: StatusBarDeps): void {
   const fullLine = parts.join(`  ${sep}  `);
 
   state.statusBarTopRow = getTermSize().rows - STATUS_BAR_HEIGHT;
-  write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)));
-  write(ansi.moveTo(deps.scrollRegionBottom(), 0));
+  write(ansi.saveCursor + ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)) + ansi.restoreCursor);
   state.statusBarDrawn = true;
   state.taskStartTime = null;
 }

@@ -194,7 +194,7 @@ export function handleResize(state: TUIState, deps: ResizeDeps): void {
     if (parts.length > 0) {
       const fullLine = parts.join(`  ${sep}  `);
       state.statusBarTopRow = rows - 1; // STATUS_BAR_HEIGHT is 1
-      write(ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)));
+      write(ansi.saveCursor + ansi.moveTo(state.statusBarTopRow, 0) + ansi.clearLine + color.dim(vtrunc(fullLine, cols)) + ansi.restoreCursor);
     }
     drawPrompt(false);
   } else if (state.busy && state.statusBarDrawn) {
