@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname, sep } from "node:path";
 import { execSync } from "node:child_process";
 import {
@@ -1047,10 +1047,25 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (state.agent) state.agent.abort();
 
-    // Delete the current TUI session — TUI is ephemeral, not persistent
+    // Delete TUI session — TUI is ephemeral
     if (state.session) {
       try { state.sessions.delete(state.session.id); } catch { /* best effort */ }
     }
+    // If running inside the Chitu project itself, nuke all runtime junk
+    try {
+      const isChituProject = existsSync(join(workspaceRoot, "src", "agent.ts")) &&
+                             existsSync(join(workspaceRoot, "dist", "index.js")) &&
+                             existsSync(join(workspaceRoot, "src", "tui", "app.ts"));
+      if (isChituProject) {
+        const chituDir = join(workspaceRoot, ".chitu");
+        if (existsSync(chituDir)) {
+          for (const entry of readdirSync(chituDir)) {
+            const p = join(chituDir, entry);
+            try { rmSync(p, { recursive: true, force: true }); } catch { /* skip */ }
+          }
+        }
+      }
+    } catch { /* best effort */ }
 
     stopStreamDrain(state);
     stopStatusBar(state, statusBarDeps);
