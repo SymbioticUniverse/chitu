@@ -1,8 +1,6 @@
 import { execSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { homedir } from "node:os";
 

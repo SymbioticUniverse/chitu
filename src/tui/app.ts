@@ -1016,6 +1016,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       drawPrompt();
 
       // Process queued messages (user typed while busy)
+      let queuedNext: { task: string } | null = null;
       if (state.messageQueue.length > 0) {
         const nextTask = state.messageQueue.shift()!;
         const { cleanText, imagePaths } = detectImages(nextTask);
@@ -1027,11 +1028,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         for (let i = 1; i < taskLines.length; i++) {
           write(color.bold(color.white(`  ${taskLines[i] ?? ""}`)) + "\n");
         }
-        setImmediate(() => handleTask(cleanText));
-        return;
+        queuedNext = { task: cleanText };
       }
 
       // YunChang auto-continuation + auto-commit
+      if (!queuedNext) {
       if (state.yunchang && lastResponse && state.agent) {
         const subGoalDone = /Sub-goal\s+\S+\s+complete/i.test(lastResponse);
         const targetDone = /Target Complete/i.test(lastResponse);
@@ -1061,6 +1062,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         }
       } else {
         state.autoContinueCount = 0;
+      }
+      } // end if (!queuedNext)
+
+      if (queuedNext) {
+        setImmediate(() => handleTask(queuedNext.task));
       }
     }
   };

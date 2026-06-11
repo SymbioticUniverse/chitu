@@ -1,7 +1,6 @@
 import { execSync } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
 /** Find the Chitu install root (git repo dir) by resolving the chitu symlink */
 export function findChituRoot(): string {
