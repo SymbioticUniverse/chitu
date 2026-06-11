@@ -825,12 +825,14 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       startStreamDrain(state);
     };
 
-    // Redact API keys and secrets from tool output
+    // Redact API keys, secrets, and system noise from tool output
     const redactSecrets = (s: string): string => {
       return s
         .replace(/sk-(?:ant-)?[a-zA-Z0-9_-]{20,}/g, "sk-***REDACTED***")
         .replace(/apiKey["\s:]+["']([^"']{10,})["']/gi, 'apiKey": "***REDACTED***"')
-        .replace(/Bearer\s+[a-zA-Z0-9._-]{20,}/g, "Bearer ***REDACTED***");
+        .replace(/Bearer\s+[a-zA-Z0-9._-]{20,}/g, "Bearer ***REDACTED***")
+        // Strip macOS system noise
+        .split("\n").filter((l) => !l.includes("could not open directory") && !l.includes("Operation not permitted")).join("\n");
     };
 
     const onToolOutput = (toolName: string, output: string) => {
