@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { MCPClient } from "./client.js";
 import type { MCPServerConfig, MCPToolDef, ToolDef, ToolHandler } from "../types.js";
 import { logger } from "../logger.js";
@@ -14,6 +14,37 @@ interface SkillDef {
   description: string;
   toolDefs?: ToolDef[];
   handlers?: Record<string, ToolHandler>;
+}
+
+/** Find the latest horsewhip MCP from the VS Code extension */
+function findExtensionMcp(): string {
+  try {
+    const extRoot = path.join(os.homedir(), ".vscode", "extensions");
+    if (!fs.existsSync(extRoot)) return "";
+    const entries = fs.readdirSync(extRoot, { withFileTypes: true });
+    const versions: Array<{ version: string; mcpPath: string }> = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const m = entry.name.match(/^horsewhip\.horsewhip-(\d+\.\d+\.\d+)$/);
+      if (!m?.[1]) continue;
+      const mcpPath = path.join(extRoot, entry.name, "media", "mcp", "dist", "index.js");
+      if (!fs.existsSync(mcpPath)) continue;
+      versions.push({ version: m[1], mcpPath });
+    }
+    if (versions.length === 0) return "";
+    versions.sort((a, b) => {
+      const pa = a.version.split(".").map(Number);
+      const pb = b.version.split(".").map(Number);
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        if ((pa[i] ?? 0) > (pb[i] ?? 0)) return -1;
+        if ((pa[i] ?? 0) < (pb[i] ?? 0)) return 1;
+      }
+      return 0;
+    });
+    return versions[0]!.mcpPath;
+  } catch {
+    return "";
+  }
 }
 
 export class MCPLoader {
@@ -66,20 +97,13 @@ export class MCPLoader {
       } catch { /* fall through */ }
     }
 
-    // Fallback: auto-load vendored horsewhip MCP
-    // Look in: workspace root, chitu install root (via argv), and chitu package root (via module URL)
-    const vendorMcp = path.join(this.workspaceRoot, "horsewhip", "mcp", "index.js");
-    const chituRoot = (() => {
-      try { return path.dirname(path.dirname(fs.realpathSync(process.argv[1] ?? ""))); } catch { return ""; }
-    })();
-    const pkgRoot = (() => {
-      try { return path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))); } catch { return ""; }
-    })();
-    const candidates = [
-      vendorMcp,
-      chituRoot ? path.join(chituRoot, "horsewhip", "mcp", "index.js") : "",
-      pkgRoot ? path.join(pkgRoot, "horsewhip", "mcp", "index.js") : "",
-    ];
+    // Fallback: auto-load horsewhip MCP from external sources
+    // Horsewhip lives OUTSIDE chitu so chitu can self-modify without self-locking.
+    // Look in: workspace sync dir → global sync dir → VS Code extension
+    const workspaceMcp = path.join(this.workspaceRoot, "horsewhip", "mcp", "index.js");
+    const globalMcp = path.join(home, ".chitu", "horsewhip", "mcp", "index.js");
+    const extMcp = findExtensionMcp();
+    const candidates = [workspaceMcp, globalMcp, extMcp];
     const mcpPath = candidates.find((c) => c && fs.existsSync(c)) ?? "";
 
     if (mcpPath) {

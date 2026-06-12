@@ -40,8 +40,13 @@ export class HorsewhipSync {
 
     log?.(`Syncing Horsewhip v${source.version} from ${source.type}...`);
 
-    await this.vendorFromSource(source);
+    await this.vendorFromSource(source, this.vendorDir);
     log?.(`  -> Vendored to ${VENDOR_DIR}/`);
+
+    // Also sync to global location so chitu can load horsewhip from any directory
+    const globalVendorDir = path.join(os.homedir(), ".chitu", "horsewhip");
+    await this.vendorFromSource(source, globalVendorDir);
+    log?.(`  -> Vendored to ~/.chitu/horsewhip/`);
 
     this.distributeSkillsAndCommands();
     log?.(`  -> Distributed skills + commands to .chitu/ and .cursor/`);
@@ -138,11 +143,11 @@ export class HorsewhipSync {
 
   // --- Vendoring ---
 
-  private async vendorFromSource(source: SyncSource): Promise<void> {
-    this.ensureDir(this.vendorDir);
+  private async vendorFromSource(source: SyncSource, targetDir: string = this.vendorDir): Promise<void> {
+    this.ensureDir(targetDir);
 
     // MCP server
-    const mcpDest = path.join(this.vendorDir, "mcp", "index.js");
+    const mcpDest = path.join(targetDir, "mcp", "index.js");
     this.ensureDir(path.dirname(mcpDest));
     fs.copyFileSync(source.mcpPath, mcpDest);
 
@@ -166,13 +171,13 @@ export class HorsewhipSync {
     }
 
     fs.writeFileSync(
-      path.join(this.vendorDir, "manifest.json"),
+      path.join(targetDir, "manifest.json"),
       JSON.stringify(manifest, null, 2) + "\n",
       "utf-8"
     );
 
     // Skills
-    const skillsDest = path.join(this.vendorDir, "skills");
+    const skillsDest = path.join(targetDir, "skills");
     if (fs.existsSync(source.skillsDir)) {
       this.ensureDir(skillsDest);
       for (const name of SKILL_NAMES) {
@@ -185,7 +190,7 @@ export class HorsewhipSync {
     }
 
     // Commands
-    const cmdsDest = path.join(this.vendorDir, "commands");
+    const cmdsDest = path.join(targetDir, "commands");
     this.ensureDir(cmdsDest);
     if (fs.existsSync(source.commandsDir)) {
       for (const name of CMD_NAMES) {
