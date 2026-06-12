@@ -249,6 +249,9 @@ export class HorsewhipSync {
     // Also write legacy .mcp.json and .cursor/mcp.json for backward compat
     this.patchLegacyMcpConfig(".mcp.json", version, hash, "${CHITU_PROJECT_DIR}");
     this.patchLegacyMcpConfig(".cursor/mcp.json", version, hash, "${workspaceFolder}");
+
+    // Write global ~/.chitu/mcp.json so MCP works from any directory
+    this.patchGlobalMcpConfig(version, hash);
   }
 
   /** Write MCP server config to .chitu/config.json */
@@ -316,6 +319,38 @@ export class HorsewhipSync {
     const newContent = JSON.stringify(config, null, 2) + "\n";
     const oldContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
     if (newContent !== oldContent) {
+      fs.writeFileSync(configPath, newContent, "utf-8");
+    }
+  }
+
+  /** Write global ~/.chitu/mcp.json with absolute path — enables MCP from any directory */
+  private patchGlobalMcpConfig(version: string, hash: string): void {
+    const globalMcpPath = path.join(os.homedir(), ".chitu", "horsewhip", "mcp", "index.js");
+    const configPath = path.join(os.homedir(), ".chitu", "mcp.json");
+    let config: any = {};
+
+    if (fs.existsSync(configPath)) {
+      try {
+        config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      } catch { /* rewrite */ }
+    }
+
+    config.mcpServers ??= {};
+    config.mcpServers.horsewhip = {
+      command: "node",
+      args: [globalMcpPath],
+      env: {
+        HORSEWHIP_WORKSPACE: "${workspaceRoot}",
+        HORSEWHIP_MCP_VERSION: version,
+        HORSEWHIP_MCP_HASH: hash,
+      },
+      alwaysLoad: true,
+    };
+
+    const newContent = JSON.stringify(config, null, 2) + "\n";
+    const oldContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
+    if (newContent !== oldContent) {
+      this.ensureDir(path.dirname(configPath));
       fs.writeFileSync(configPath, newContent, "utf-8");
     }
   }
