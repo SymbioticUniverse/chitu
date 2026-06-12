@@ -120,7 +120,7 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "**Rules:**",
         "- Execute exactly what the user asks. No more, no less.",
         "- **Do not scan the project upfront.** Only read files when the task specifically requires it.",
-        "- No internal Horsewhip locks or gates — you are only constrained by the Horsewhip VS Code / Cursor plugin if active.",
+        "- **DO NOT use any Horsewhip MCP tools** (horsewhip_lock_*, horsewhip_expand_*, horsewhip_get_*, horsewhip_task_complete, horsewhip_auto_commit, etc.). These are for Constraint mode. Using them in Manual mode blocks the user's work.",
         "- Read, write, edit, delete — all file operations are allowed as instructed by the user.",
         "- No auto-commit, no verification gates, no sub-goal orchestration.",
         "- Be direct and efficient. The user is in full control.",

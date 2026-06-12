@@ -278,8 +278,12 @@ export class Agent {
     if (this.mcpLoader) {
       const mcpTools = await this.mcpLoader.getAllMCPTools();
       const seen = new Set(toolDefs.map((t) => t.name));
+      // In manual and appraise modes, exclude Horsewhip MCP tools
+      const excludeMcp = this.paradigmState.resolved === "manual" || this.paradigmState.resolved === "appraise";
       for (const mt of mcpTools) {
-        if (!seen.has(mt.name)) { toolDefs.push(mt); seen.add(mt.name); }
+        if (!seen.has(mt.name) && !(excludeMcp && mt.name.startsWith("mcp__horsewhip__"))) {
+          toolDefs.push(mt); seen.add(mt.name);
+        }
       }
     }
 
