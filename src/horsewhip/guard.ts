@@ -82,10 +82,9 @@ export class HorsewhipGuardImpl implements HorsewhipGuard {
     const matchAllowed = (list: string[]) =>
       list.some((p) => relPath === p || relPath.startsWith(p + "/"));
 
-    // No lock active: new files OK, tracked read-only
+    // No lock active: everything allowed — constraint is opt-in, not opt-out
     if (!state.locked) {
-      if (!tracked.has(relPath)) return { allowed: true, path: relPath };
-      return { allowed: false, path: relPath, reason: "Implicit decouple: tracked files are read-only by default. Set a boundary to allow writes." };
+      return { allowed: true, path: relPath };
     }
 
     // Decouple mode
@@ -162,9 +161,6 @@ export class HorsewhipGuardImpl implements HorsewhipGuard {
     }
 
     if (!state.locked) {
-      if (HorsewhipGuardImpl.hasWriteConstruct(command)) {
-        return { allowed: false, path: command.slice(0, 80), reason: "Implicit decouple: shell writes blocked. Use write_file to discover which files need unlocking." };
-      }
       return { allowed: true, path: "" };
     }
 

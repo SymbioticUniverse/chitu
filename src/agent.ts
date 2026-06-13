@@ -126,6 +126,7 @@ export class Agent {
 
     if (horsewhipGuard instanceof HorsewhipGuardImpl) {
       this.guard = horsewhipGuard;
+      this.guard.unlock(); // Clean up stale boundary from previous session
     }
 
     this.ctx = {
@@ -196,6 +197,8 @@ export class Agent {
     this.paradigmState.resolved = p;
     this.paradigmState.plan = undefined;
     this.paradigmState.currentStep = undefined;
+    // Clear stale boundary when switching modes — constraint is opt-in per task
+    if (this.guard) this.guard.unlock();
   }
 
   rebuildSystemPrompt(): void {
