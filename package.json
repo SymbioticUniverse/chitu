@@ -1,6 +1,6 @@
 {
   "name": "chitu",
-  "version": "0.1.09",
+  "version": "1.0.10",
   "description": "赤兔 — 约束自涌现终端 AI Agent。架构不是设计出来的，是锁出来的。",
   "type": "module",
   "main": "dist/index.js",
