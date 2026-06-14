@@ -162,7 +162,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
     const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
     const ctxPart = `ctx:${ctxPct}%`;
-    const hwPart = `HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`;
+    const hwPart = `守:${m.writesAllowed}✓ ${m.writesBlocked}✗`;
     const parts = [workingPart, tokenSection, ctxPart, hwPart].filter(Boolean);
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
@@ -183,7 +183,7 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     parts.push(`${fmtTokens(state.animTokens)} tokens${cacheStr}`);
     const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
     parts.push(`ctx:${ctxPct}%`);
-    if (m) parts.push(`HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
+    if (m) parts.push(`守:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
@@ -256,7 +256,7 @@ export function stopStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
   const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
   parts.push(`ctx:${ctxPct}%`);
-  if (m) parts.push(`HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
+  if (m) parts.push(`守:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
   const fullLine = parts.join(`  ${sep}  `);
 
   state.statusBarTopRow = getTermSize().rows - STATUS_BAR_HEIGHT;
