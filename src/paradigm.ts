@@ -36,7 +36,7 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "",
         "- **You may only complete ONE sub-goal at a time. Creating or modifying files for future sub-goals is forbidden.**",
         "- After each sub-goal, the system auto-commits with format: `chitu: <sub-goal title> completed`",
-        "- After commit, the system writes verification.md (metrics snapshot + test results), then proceeds to the next sub-goal",
+        "- After commit, the system writes verification.md (test results), then proceeds to the next sub-goal",
         "- **If you write files belonging to future sub-goals, Horsewhip will hard-block you.**",
         "- **If you contaminate future sub-goal files, it will be detected → warning → rollback → purge.**",
         "",

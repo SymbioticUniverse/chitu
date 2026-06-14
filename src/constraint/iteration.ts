@@ -90,7 +90,7 @@ export function checkBypass(
   } catch { /* can't check */ }
 }
 
-/** Read completion data from .chitu/completions/latest.json, then delete it. */
+/** Read completion data from .chitu/completions/latest.json. Does NOT delete. */
 export function readCompletion(workspaceRoot: string): {
   exports: string[] | Record<string, string[]>;
   imports: string[] | Record<string, string[]>;
@@ -103,9 +103,16 @@ export function readCompletion(workspaceRoot: string): {
     if (!raw.trim()) return null;
     const data = JSON.parse(raw);
     if (!data || !data.exports) return null;
-    fs.unlinkSync(compPath);
     return { exports: data.exports ?? [], imports: data.imports ?? [], capability: data.capability ?? "" };
   } catch { return null; }
+}
+
+/** Delete the completion file after a successful commit. */
+export function deleteCompletion(workspaceRoot: string): void {
+  try {
+    const compPath = path.join(workspaceRoot, COMPLETION_FILE);
+    if (fs.existsSync(compPath)) fs.unlinkSync(compPath);
+  } catch { /* ok */ }
 }
 
 /** Extract user goal from agent messages. */

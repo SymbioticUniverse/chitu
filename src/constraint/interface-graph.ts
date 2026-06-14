@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import {
   loadAllFileInterfaces,
   buildInterfaceMapContext,
+  scanAndIndexAllFiles,
 } from "./interface.js";
 
 export const CONSTRAINT_INSTRUCTION = [
@@ -14,9 +15,8 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "### Starting Each Iteration",
   "",
-  "1. **Check interfaces**: Read `.chitu/interfaces/`. What modules already exist and what do they export?",
-  "   - Empty & project has code → summarize existing code into interface docs first.",
-  "   - Empty & no code → fresh project, proceed to step 2.",
+  "1. **Interfaces are pre-indexed**: The Interface Graph below lists every source file, its exports, and its imports. You do NOT need to browse files to discover what exists — the graph is complete. If a capability is blank, you may read that file to infer its purpose, then update its interface doc.",
+  "   - If the graph is empty → fresh project, proceed to step 2.",
   "",
   "2. **Check plan**: Read `.chitu/plans/`. Is there a plan for this task?",
   "   - **No plan** → create one as `{plan-name}.md`. Break the task into sub-tasks, one module each.",
@@ -28,11 +28,11 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "### Each Iteration",
   "",
-  "4. **Pick ONE unchecked item** from the plan (ONE file, not a whole phase). Call `horsewhip_lock_intent` with ONLY that item's files.",
+  "4. **Declare boundary upfront**: For each sub-goal, list ALL files you will touch (create, modify, or delete) and call `horsewhip_lock_intent` with ALL of them at once. If you later discover you need an additional file, call `horsewhip_lock_intent` again with the expanded list — this is more reliable than `horsewhip_expand_boundary`.",
   "",
-  "5. **Work** within the boundary. Import from existing modules via their documented interfaces. Prefer new files over modifying locked ones.",
+  "5. **Work** within the boundary. Import from existing modules via their documented interfaces. If the sub-goal requires deleting files, include them in the boundary declaration too.",
   "",
-  "6. **If blocked**: `horsewhip_expand_boundary` with `reason`: `architecture` (interface/export change), `bugfix`, or `omission`. Max 2 expands per iteration, cumulative boundary ≤ 10 files.",
+  "6. **Do NOT use `ask_user`**. Constraint mode must be autonomous. If a file is blocked: put that task aside, complete what you can, call `complete_sub_goal`, and handle the blocked file in the next iteration.",
   "",
   "7. **Complete**: Call `complete_sub_goal` with this iteration's exports and imports.",
   "",
@@ -46,10 +46,10 @@ export const CONSTRAINT_INSTRUCTION = [
 
 /** Build interface graph note for system prompt injection. */
 export function buildGraphNote(workspaceRoot: string): string {
-  const interfaces = loadAllFileInterfaces(workspaceRoot);
+  const interfaces = scanAndIndexAllFiles(workspaceRoot);
   return interfaces.length > 0
     ? buildInterfaceMapContext(interfaces)
-    : "No interface graph yet. Read the source files directly, then call `horsewhip_lock_intent` to set your boundary.";
+    : "No source files found in this project.";
 }
 
 /** Build compact state message for next iteration (discards history, keeps task + progress). */

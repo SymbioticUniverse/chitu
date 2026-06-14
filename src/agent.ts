@@ -281,12 +281,22 @@ export class Agent {
     if (this.mcpLoader) {
       const mcpTools = await this.mcpLoader.getAllMCPTools();
       const seen = new Set(toolDefs.map((t) => t.name));
-      // In manual and appraise modes, exclude Horsewhip MCP tools
-      const excludeMcp = this.paradigmState.resolved === "manual" || this.paradigmState.resolved === "appraise";
+      // MCP tool filtering per paradigm:
+      //   manual / appraise → exclude ALL Horsewhip MCP tools
+      //   constraint / ride → exclude Horsewhip tools that bypass Chitu's verify→commit gates
+      const paradigm = this.paradigmState.resolved;
+      const blockAllHorsewhip = paradigm === "manual" || paradigm === "appraise";
+      const HORSEWHIP_BYPASS_TOOLS = new Set([
+        "mcp__horsewhip__horsewhip_task_complete",
+        "mcp__horsewhip__horsewhip_finish_auto",
+        "mcp__horsewhip__horsewhip_auto_commit",
+      ]);
       for (const mt of mcpTools) {
-        if (!seen.has(mt.name) && !(excludeMcp && mt.name.startsWith("mcp__horsewhip__"))) {
-          toolDefs.push(mt); seen.add(mt.name);
-        }
+        if (seen.has(mt.name)) continue;
+        const isHorsewhip = mt.name.startsWith("mcp__horsewhip__");
+        if (blockAllHorsewhip && isHorsewhip) continue;
+        if (isHorsewhip && HORSEWHIP_BYPASS_TOOLS.has(mt.name)) continue;
+        toolDefs.push(mt); seen.add(mt.name);
       }
     }
 
@@ -301,19 +311,15 @@ export class Agent {
 
     if (this.explicitThinking !== undefined) {
       this.provider.setThinking(this.explicitThinking);
-      this.model = this.explicitThinking ? "deepseek-v4-pro" : "deepseek-v4-flash";
     } else if (resolved === "appraise") {
       this.provider.setThinking(false);
-      this.model = "deepseek-v4-flash";
     } else if (resolved === "spur") {
       this.provider.setThinking(false);
-      this.model = "deepseek-v4-pro";
     } else {
       if (this.guard && this.taskIntent !== "query") {
         this.provider.setThinking(true);
-        this.model = "deepseek-v4-pro";
       } else {
-        this.model = "deepseek-v4-flash";
+        this.provider.setThinking(false);
       }
     }
 
@@ -598,6 +604,8 @@ export class Agent {
 
       let finalResult = "";
       let iterationCount = 0;
+      let gateFailures: string[] = [];        // accumulate gate feedback across rounds (survives compact)
+      let compactRounds = 0;                  // times we've compacted on this iteration
 
       while (iterationCount < MAX_ITERATIONS) {
         iterationCount++;
@@ -607,6 +615,12 @@ export class Agent {
         while (executor.nextAttempt()) {
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
           if (signal?.aborted) { executor.rollback(); return result || "(aborted)"; }
+
+          if (executor.iterationCompleted) {
+            iterationSucceeded = true;
+            finalResult = result;
+            break;
+          }
 
           const completed = executor.ensureBoundary();
           if (!completed) { finalResult = result; aiStopped = true; break; }
@@ -620,18 +634,57 @@ export class Agent {
             finalResult = `${result}\n\n${final}`;
             break;
           }
+          gateFailures.push(gates.feedback);
           this.messages.push({ role: "user", content: gates.feedback });
         }
 
-        if (signal?.aborted) return finalResult || "(aborted)";
-        if (aiStopped) return finalResult || "(done)";
-        if (!iterationSucceeded) { executor.rollback(); return finalResult || "(task incomplete)"; }
+        if (signal?.aborted) {
+          const doneCount = iterationCount - (iterationSucceeded ? 0 : 1);
+          const doneNote = doneCount > 0 ? `（已成功提交 ${doneCount} 轮迭代）` : "";
+          onToolOutput?.("phase", `【约束模式已中断】${doneNote}`);
+          return finalResult || "(aborted)";
+        }
+        if (aiStopped) {
+          onToolOutput?.("phase", `【约束模式暂停 — 第 ${iterationCount} 轮迭代 AI 未调用 complete_sub_goal，等待继续】`);
+          return finalResult || "(done)";
+        }
+        if (!iterationSucceeded) {
+          compactRounds++;
+          if (compactRounds >= 3) {
+            // 3 compaction rounds × 3 attempts = 9 total tries — truly give up
+            const doneCount = iterationCount - 1;
+            const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
+            onToolOutput?.("phase", `【约束模式失败 — 第 ${iterationCount} 轮迭代 9 次尝试未通过 gates 验证，已尽最大努力】${doneNote}`);
+            executor.rollback();
+            return finalResult || "(task incomplete)";
+          }
+          // Compact context and retry same iteration — AI gets fresh context + accumulated failures
+          const compactState = executor.buildCompactState("");
+          this.compactMessages(compactState);
+          executor.refreshContext();
+          executor.retryIteration(); // reset attempts counter, keep gate failures
+          iterationCount--;         // don't count this as a completed iteration
+          const totalFails = gateFailures.length;
+          const failedGates = gateFailures.map((g, i) => `${i + 1}. ${g.replace(/## /g, "").split("\n")[0]}`).join("\n");
+          this.messages.push({
+            role: "user",
+            content: `## Retry — gates failed ${totalFails} time(s)\n\nPrevious failures:\n${failedGates}\n\nFix the source code so that exports/imports match what \`complete_sub_goal\` declares, tests pass, and actual changes exist. Then call \`complete_sub_goal\` again.`,
+          });
+          gateFailures = [];
+          onToolOutput?.("phase", `【第 ${iterationCount} 轮迭代压缩重试 — gates 已失败 ${totalFails} 次，正在修复源码…】`);
+          continue;
+        }
+
+        // Reset failure tracking for next iteration
+        gateFailures = [];
+        compactRounds = 0;
 
         this.messages.push({
           role: "user",
           content: `${finalResult}\n\nContinue with the next sub-goal. If all tasks are complete, reply with a brief summary (do NOT call \`complete_sub_goal\`).`,
         });
       }
+      onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，所有 sub-goal 已处理】`);
       return finalResult || "(task complete)";
     } finally { this.constraintExecutor = null; }
   }

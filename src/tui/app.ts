@@ -9,7 +9,6 @@ import { Agent, buildUserContent } from "../agent.js";
 import { SessionManager } from "../session.js";
 import { MCPLoader } from "../mcp/loader.js";
 import { HorsewhipGuardImpl } from "../horsewhip/guard.js";
-import { MetricsEngine } from "../metrics.js";
 import { logger } from "../logger.js";
 import { charDisplayWidth, vlen, vtrunc } from "./visual.js";
 import { FMT_BOLD, FMT_ITALIC, FMT_LINK, FMT_CODE, FMT_HEADER, FMT_MUTED, FMT_WHITE } from "./formatting.js";
@@ -32,7 +31,7 @@ import {
 } from "./input.js";
 import {
   fmtTokens, fmtTokensLive, fmtCacheRate, fmtElapsed,
-  tickAnimTokens, getLiveMetrics, getActiveParadigm,
+  tickAnimTokens, getHorsewhipStats, getActiveParadigm,
   drawStatusBar, clearStatusBar, startStatusBar, stopStatusBar,
   drawModeBar, drawHintPanel,
   type StatusBarDeps,
@@ -486,18 +485,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       return;
     }
 
-    if (task === "/metrics") {
-      const engine = new MetricsEngine(workspaceRoot);
-      const report = engine.compute();
-      if (report) {
-        const { renderMetricsReport } = await import("../metrics-renderer.js");
-        printAssistantBlock(renderMetricsReport(report), scrollRegionBottom);
-      } else {
-        printAssistantBlock("No metrics data. Run a task first.", scrollRegionBottom);
-      }
-      drawPrompt();
-      return;
-    }
 
     if (task === "/health") {
       if (state.agent) {
@@ -854,7 +841,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     };
 
     // Redact API keys, secrets, and system noise from tool output
-    const redactSecrets = (s: string): string => {
+    const redactSecrets = (s: string | null | undefined): string => {
+      if (!s && s !== "") return "(empty)";
       return s
         .replace(/sk-(?:ant-)?[a-zA-Z0-9_-]{20,}/g, "sk-***REDACTED***")
         .replace(/apiKey["\s:]+["']([^"']{10,})["']/gi, 'apiKey": "***REDACTED***"')
@@ -863,7 +851,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         .split("\n").filter((l) => !l.includes("could not open directory") && !l.includes("Operation not permitted")).join("\n");
     };
 
-    const onToolOutput = (toolName: string, output: string) => {
+    const onToolOutput = (toolName: string, output: string | null | undefined) => {
       resetWatchdog();
       const sanitized = redactSecrets(output);
       if (toolName === "phase") {
@@ -874,6 +862,16 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           state.printingAssistant = true;
         }
         write(color.dim(sanitized) + "\n");
+        return;
+      }
+
+      if (toolName === "ask_user") {
+        if (!streamOpened) {
+          beginOutputBlock();
+          streamOpened = true;
+          state.printingAssistant = true;
+        }
+        write("\n" + color.brightYellow("⚠ AI 需要你的输入 — ") + color.brightWhite(sanitized) + "\n\n");
         return;
       }
 
@@ -906,9 +904,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     let lastResponse = "";
 
     let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    let watchdogFired = false;
     const resetWatchdog = () => {
       if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogFired = false;
       watchdogTimer = setTimeout(() => {
+        watchdogFired = true;
         const dumpPath = join(workspaceRoot, ".chitu", "watchdog.json");
         try {
           if (!existsSync(dirname(dumpPath))) mkdirSync(dirname(dumpPath), { recursive: true });
@@ -927,6 +928,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
             agentState,
           }, null, 2), "utf-8");
         } catch { /* best-effort */ }
+        // Show visible warning in TUI
+        if (!streamOpened) { beginOutputBlock(); streamOpened = true; state.printingAssistant = true; }
+        write("\n" + color.brightRed("⚠ 已 60 秒无工具调用，AI 可能卡住或正在等待你的输入。") + "\n");
+        write(color.dim("  键入 /quit 退出，或输入内容继续。") + "\n\n");
       }, WATCHDOG_IDLE_MS);
     };
     resetWatchdog();

@@ -45,13 +45,16 @@ export function verifyGates(
   exports: string[] | Record<string, string[]>,
   imports: string[] | Record<string, string[]>,
 ): GateResult {
-  // Gate 0: actual changes
-  const changes = getChanges(workspaceRoot);
-  if (changes.length === 0) {
-    return {
-      ok: false,
-      feedback: `## No changes detected\nYou declared a boundary but didn't modify any files. Make the requested changes, then call \`complete_sub_goal\` again.`,
-    };
+  // Gate 0: actual changes (exclude metadata dirs)
+  const allChanges = getChanges(workspaceRoot);
+  const realChanges = allChanges.filter((f) =>
+    !f.startsWith(".chitu/") && !f.startsWith(".horsewhip/"),
+  );
+  if (realChanges.length === 0) {
+    const metaOnly = allChanges.length > 0
+      ? `Only metadata files changed (${allChanges.slice(0, 3).join(", ")}${allChanges.length > 3 ? "..." : ""}). This is NOT real work — modify actual source files.`
+      : "You declared a boundary but didn't modify any files.";
+    return { ok: false, feedback: `## No real changes detected\n${metaOnly}\nMake the requested changes, then call \`complete_sub_goal\` again.` };
   }
 
   // Gate 1: export verification
@@ -173,24 +176,66 @@ function verifyImports(
   return issues;
 }
 
-function runTests(workspaceRoot: string): { ok: boolean; output: string } {
+function detectProjectLanguage(workspaceRoot: string): "js" | "python" | "unknown" {
+  if (fs.existsSync(path.join(workspaceRoot, "package.json"))) return "js";
+  if (fs.existsSync(path.join(workspaceRoot, "requirements.txt")) ||
+      fs.existsSync(path.join(workspaceRoot, "pyproject.toml")) ||
+      fs.existsSync(path.join(workspaceRoot, "setup.py")) ||
+      fs.existsSync(path.join(workspaceRoot, "setup.cfg"))) return "python";
+  return "unknown";
+}
+
+function findPythonTestRunner(workspaceRoot: string): string | null {
+  // Prefer pytest, fall back to unittest
   try {
-    const pkgPath = path.join(workspaceRoot, "package.json");
-    if (!fs.existsSync(pkgPath)) {
-      return { ok: false, output: "No package.json found." };
+    execSync("pytest --version 2>/dev/null", { cwd: workspaceRoot, timeout: 5000, stdio: "pipe" });
+    return "pytest";
+  } catch { /* not installed */ }
+  try {
+    execSync("python -m pytest --version 2>/dev/null", { cwd: workspaceRoot, timeout: 5000, stdio: "pipe" });
+    return "python -m pytest";
+  } catch { /* not installed */ }
+  return null;
+}
+
+function runTests(workspaceRoot: string): { ok: boolean; output: string } {
+  const lang = detectProjectLanguage(workspaceRoot);
+
+  if (lang === "python") {
+    const runner = findPythonTestRunner(workspaceRoot);
+    if (!runner) {
+      return { ok: true, output: "pytest not found — skipping tests (Python project)" };
     }
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    if (!pkg.scripts?.test) {
-      return { ok: false, output: "No test script in package.json." };
+    try {
+      const result = execSync(`${runner} --tb=short 2>&1 || true`, {
+        cwd: workspaceRoot, encoding: "utf-8", maxBuffer: 5 * 1024 * 1024, timeout: 120_000,
+      });
+      const failed = /(?:FAILED|ERRORS|====.*failed|no tests ran)/i.test(result);
+      return { ok: !failed, output: result };
+    } catch (e: any) {
+      return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
     }
-    const result = execSync("npm test 2>&1 || true", {
-      cwd: workspaceRoot, encoding: "utf-8", maxBuffer: 5 * 1024 * 1024, timeout: 120_000,
-    });
-    const failed = /(?:FAIL|failed|\d+ failing|Test failed|AssertionError|npm ERR!)/i.test(result);
-    return { ok: !failed, output: result };
-  } catch (e: any) {
-    return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
   }
+
+  if (lang === "js") {
+    try {
+      const pkgPath = path.join(workspaceRoot, "package.json");
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      if (!pkg.scripts?.test) {
+        return { ok: true, output: "No test script in package.json — skipping tests" };
+      }
+      const result = execSync("npm test 2>&1 || true", {
+        cwd: workspaceRoot, encoding: "utf-8", maxBuffer: 5 * 1024 * 1024, timeout: 120_000,
+      });
+      const failed = /(?:FAIL|failed|\d+ failing|Test failed|AssertionError|npm ERR!)/i.test(result);
+      return { ok: !failed, output: result };
+    } catch (e: any) {
+      return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
+    }
+  }
+
+  // Unknown language — skip tests, don't block
+  return { ok: true, output: "Unknown project type — skipping tests" };
 }
 
 /** Verify expand reasons against actual interface changes. Returns score delta and labels. */

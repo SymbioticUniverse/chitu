@@ -127,14 +127,14 @@ try {
 
 // chitu          → TUI interactive
 // chitu --dev     → TUI dev mode
-// chitu run/resume/metrics/list/config/help → CLI mode
+// chitu run/resume/list/config/help → CLI mode
 
 if (forceAppraise) {
   startTUI({ skipGuard: true, paradigm: "appraise" }).catch((e) => {
     console.error("Chitu fatal:", e);
     process.exit(1);
   });
-} else if (!["run", "resume", "metrics", "list", "dev", "build", "sync", "config", "help", "update", "uninstall"].includes(argv[0] ?? "") &&
+} else if (!["run", "resume", "list", "dev", "build", "sync", "config", "help", "update", "uninstall"].includes(argv[0] ?? "") &&
            (argv.length === 0 || argv[0] === "--dev" || argv.includes("--thinking"))) {
   const dev = argv[0] === "--dev";
   const thinking = argv.includes("--thinking");

@@ -29,7 +29,6 @@ export const COMMANDS: HintItem[] = [
   { name: "/compact", description: "Compress context" },
   { name: "/resume", description: "Resume session" },
   { name: "/help", description: "Help" },
-  { name: "/metrics", description: "Metrics" },
   { name: "/health", description: "Health check" },
   { name: "/session", description: "Session info" },
   { name: "/model", description: "Switch model" },
@@ -123,7 +122,7 @@ export interface TUIState {
   taskStartTime: number | null;
   statusInterval: ReturnType<typeof setInterval> | null;
   statusFrameIdx: number;
-  lastMetricsSnapshot: { humanInLoopCount: number } | null;
+  lastHorsewhipStats: { hitlCount: number; writesAllowed: number; writesBlocked: number } | null;
   livePromptChars: number;
   liveCompletionChars: number;
   thinkingActive: boolean;
@@ -221,7 +220,7 @@ export function createTUIState(
     taskStartTime: null,
     statusInterval: null,
     statusFrameIdx: 0,
-    lastMetricsSnapshot: null,
+    lastHorsewhipStats: null,
     livePromptChars: 0,
     liveCompletionChars: 0,
     thinkingActive: false,

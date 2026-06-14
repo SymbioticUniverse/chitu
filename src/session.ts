@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Session, Message, MetricsReport } from "./types.js";
+import type { Session, Message } from "./types.js";
 
 export class SessionManager {
   private workspaceRoot: string;
@@ -95,14 +95,5 @@ export class SessionManager {
 
     fs.unlinkSync(filePath);
     return true;
-  }
-
-  /** Attach metrics to a session */
-  attachMetrics(id: string, metrics: MetricsReport): void {
-    const session = this.load(id);
-    if (session) {
-      session.metrics = metrics;
-      this.save(session);
-    }
   }
 }

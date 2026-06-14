@@ -3,14 +3,13 @@ import { writeFileSync } from "node:fs";
 import { Agent } from "./agent.js";
 import { logger } from "./logger.js";
 import { SessionManager } from "./session.js";
-import { MetricsEngine } from "./metrics.js";
 import { MCPLoader } from "./mcp/loader.js";
 import { HorsewhipGuardImpl } from "./horsewhip/guard.js";
 import type { Paradigm } from "./types.js";
 import { resolveApiKey, resolveModel, loadGlobalConfig, saveGlobalConfig, GLOBAL_CONFIG_PATH } from "./global-config.js";
 
 interface Args {
-  command: "run" | "resume" | "metrics" | "list" | "dev" | "build" | "sync" | "config" | "help" | "update" | "uninstall";
+  command: "run" | "resume" | "list" | "dev" | "build" | "sync" | "config" | "help" | "update" | "uninstall";
   task?: string;
   sessionId?: string;
   model?: string;
@@ -56,9 +55,6 @@ function parseArgs(argv: string[]): Args {
         break;
       case "uninstall":
         args.command = "uninstall";
-        break;
-      case "metrics":
-        args.command = "metrics";
         break;
       case "list":
         args.command = "list";
@@ -129,7 +125,6 @@ Usage:
   chitu sync                     Sync Horsewhip MCP version
   chitu update                   Update Chitu to latest version
   chitu uninstall                 Uninstall Chitu completely
-  chitu metrics [session-id]     Show six-dimension metrics
   chitu list                     List all sessions
   chitu config                   Show global config (~/.chitu/config.json)
   chitu config set <key> <val>   Set a config value (e.g. apiKey, model)
@@ -342,8 +337,6 @@ export async function main(argv: string[]): Promise<void> {
       agent.setTask(args.task);
 
       try {
-        const { renderMetricsReport } = await import("./metrics-renderer.js");
-
         // Ride mode runs the TargetExecutor state machine.
         // Each execute() call advances one phase. Loop until done.
         let result = "";
@@ -396,14 +389,6 @@ export async function main(argv: string[]): Promise<void> {
         // Save session messages
         session.messages = agent.getMessages();
         sessions.save(session);
-
-        // Compute and display metrics
-        const metricsEngine = new MetricsEngine(workspaceRoot);
-        const report = metricsEngine.compute();
-        if (report) {
-          sessions.attachMetrics(session.id, report);
-          console.log(`\n${renderMetricsReport(report)}`);
-        }
 
         console.log(`\nSession saved: ${session.id}`);
       } catch (e) {
@@ -501,12 +486,6 @@ export async function main(argv: string[]): Promise<void> {
         session.messages = agent.getMessages();
         sessions.save(session);
 
-        const metricsEngine = new MetricsEngine(workspaceRoot);
-        const report = metricsEngine.compute();
-        if (report) {
-          sessions.attachMetrics(session.id, report);
-        }
-
         console.log(`\nSession saved: ${session.id}`);
       } catch (e) {
         console.error(`\nError: ${String(e)}`);
@@ -517,19 +496,6 @@ export async function main(argv: string[]): Promise<void> {
       break;
     }
 
-    case "metrics": {
-      const metricsEngine = new MetricsEngine(workspaceRoot);
-      const report = metricsEngine.compute(args.sessionId);
-
-      if (!report) {
-        console.log("No metrics data available. Run a task first.");
-        process.exit(1);
-      }
-
-      // Metrics rendering hidden
-      break;
-    }
-
     case "list": {
       const all = sessions.list();
       if (all.length === 0) {
@@ -537,8 +503,7 @@ export async function main(argv: string[]): Promise<void> {
       } else {
         for (const s of all) {
           const msgCount = s.messages?.length ?? 0;
-          const hasMetrics = s.metrics ? " [metrics]" : "";
-          console.log(`  ${s.id}  ${s.createdAt.slice(0, 10)}  ${msgCount}msgs  "${s.task.slice(0, 50)}"${hasMetrics}`);
+          console.log(`  ${s.id}  ${s.createdAt.slice(0, 10)}  ${msgCount}msgs  "${s.task.slice(0, 50)}"`);
         }
       }
       break;

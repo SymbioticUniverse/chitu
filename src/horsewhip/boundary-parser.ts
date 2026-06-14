@@ -47,12 +47,27 @@ export class BoundaryFileManager {
     fs.writeFileSync(file, JSON.stringify(state, null, 2), "utf-8");
     this.cache = state;
     this.cacheMtime = fs.statSync(file).mtimeMs;
+
+    // Sync to allowlist.json so the Horsewhip extension sees the boundary
+    const allowlistFile = path.join(this.horsewhipDir, "allowlist.json");
+    const allowlist = {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      allowed: state.allowed ?? [],
+      guardActive: state.locked,
+    };
+    fs.writeFileSync(allowlistFile, JSON.stringify(allowlist, null, 2), "utf-8");
   }
 
   delete(): void {
     const file = path.join(this.horsewhipDir, BOUNDARY_FILE);
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
+    }
+    // Also clean up allowlist.json
+    const allowlistFile = path.join(this.horsewhipDir, "allowlist.json");
+    if (fs.existsSync(allowlistFile)) {
+      fs.unlinkSync(allowlistFile);
     }
     this.cache = null;
   }

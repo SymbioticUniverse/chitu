@@ -3,6 +3,8 @@
  *
  * Extracted from app.ts startTUI closure.
  */
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { write, color, ansi, getTermSize } from "./screen.js";
 import {
   STATUS_BAR_HEIGHT, MODE_BAR_HEIGHT, MAX_HINT_LINES,
@@ -10,8 +12,7 @@ import {
 } from "./state.js";
 import type { TUIState, HintItem } from "./state.js";
 import { vtrunc } from "./visual.js";
-import { MetricsEngine } from "../metrics.js";
-import type { Paradigm } from "../types.js";
+import type { AuditEvent, Paradigm } from "../types.js";
 
 // ── Deps interface ──
 
@@ -61,15 +62,35 @@ export function tickAnimTokens(state: TUIState, target: number, targetRate: numb
   }
 }
 
-// ── Live metrics ──
+// ── Horsewhip stats ──
 
-export function getLiveMetrics(workspaceRoot: string): { humanInLoopCount: number } {
+export interface HorsewhipStats {
+  hitlCount: number;
+  writesAllowed: number;
+  writesBlocked: number;
+}
+
+export function getHorsewhipStats(workspaceRoot: string): HorsewhipStats {
   try {
-    const engine = new MetricsEngine(workspaceRoot);
-    const report = engine.compute();
-    if (report) return { humanInLoopCount: report.humanInLoopCount };
-  } catch { /* skip */ }
-  return { humanInLoopCount: 0 };
+    const auditPath = path.join(workspaceRoot, ".git", "horsewhip", "session-audit.json");
+    if (!fs.existsSync(auditPath)) return { hitlCount: 0, writesAllowed: 0, writesBlocked: 0 };
+    const raw = fs.readFileSync(auditPath, "utf-8").trim();
+    const events: AuditEvent[] = [];
+    if (raw.startsWith('{"id":"evt-')) {
+      for (const line of raw.split("\n")) {
+        try { events.push(JSON.parse(line)); } catch { /* skip */ }
+      }
+    } else {
+      const data = JSON.parse(raw);
+      const arr = Array.isArray(data) ? data : (data.events ?? []);
+      events.push(...arr);
+    }
+    return {
+      hitlCount: events.filter((e) => e.type === "human_in_loop").length,
+      writesAllowed: events.filter((e) => e.type === "write").length,
+      writesBlocked: events.filter((e) => e.type === "strict_block").length,
+    };
+  } catch { return { hitlCount: 0, writesAllowed: 0, writesBlocked: 0 }; }
 }
 
 // ── Paradigm ──
@@ -102,7 +123,7 @@ export function drawModeBar(state: TUIState): void {
   const thinkingTag = thinkingOn ? " " + color.yellow("[thinking]") : "";
   const line = " " + pc(`<${label}>`) + thinkingTag + color.dim(` --${desc}${cycleHint}`);
 
-  write(ansi.moveTo(modeBarRow, 0) + ansi.clearLine + line);
+  write(ansi.saveCursor + ansi.moveTo(modeBarRow, 0) + ansi.clearLine + line + ansi.restoreCursor);
 }
 
 // ── Status bar ──
@@ -121,8 +142,8 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const now = Date.now();
     const elapsed = state.taskStartTime ? fmtElapsed(now - state.taskStartTime) : "00:00";
 
-    const m = state.lastMetricsSnapshot ?? getLiveMetrics(state.workspaceRoot);
-    if (!state.lastMetricsSnapshot) state.lastMetricsSnapshot = m;
+    const m = state.lastHorsewhipStats ?? getHorsewhipStats(state.workspaceRoot);
+    if (!state.lastHorsewhipStats) state.lastHorsewhipStats = m;
 
     const workingPart = `${spinner} Chitu working · ${elapsed}`;
 
@@ -141,8 +162,8 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
     const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
     const ctxPart = `ctx:${ctxPct}%`;
-    const hitlPart = `HITL:${m.humanInLoopCount}`;
-    const parts = [workingPart, tokenSection, ctxPart, hitlPart].filter(Boolean);
+    const hwPart = `HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`;
+    const parts = [workingPart, tokenSection, ctxPart, hwPart].filter(Boolean);
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
@@ -156,13 +177,13 @@ export function drawStatusBar(state: TUIState, deps: StatusBarDeps): void {
     const targetRate = (u && u.promptTokens > 0) ? Math.round((u.cachedTokens / u.promptTokens) * 100) : state.animCacheRate;
     tickAnimTokens(state, target, targetRate);
 
-    const m = state.lastMetricsSnapshot;
+    const m = state.lastHorsewhipStats;
     const parts: string[] = [];
     const cacheStr = isDeepSeek ? `  cache:${state.animCacheRate}%` : "";
     parts.push(`${fmtTokens(state.animTokens)} tokens${cacheStr}`);
     const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
     parts.push(`ctx:${ctxPct}%`);
-    if (m) parts.push(`HITL:${m.humanInLoopCount}`);
+    if (m) parts.push(`HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
     const fullLine = parts.join(`  ${sep}  `);
     const trimmed = vtrunc(fullLine, cols);
 
@@ -182,9 +203,14 @@ export function clearStatusBar(state: TUIState, deps: StatusBarDeps): void {
 }
 
 export function startStatusBar(state: TUIState, deps: StatusBarDeps): void {
+  // Clear any previous interval before creating a new one (defensive)
+  if (state.statusInterval) {
+    clearInterval(state.statusInterval);
+    state.statusInterval = null;
+  }
   state.taskStartTime = Date.now();
   state.statusFrameIdx = 0;
-  state.lastMetricsSnapshot = null;
+  state.lastHorsewhipStats = null;
   state.liveCompletionChars = 0;
   if (state.agent) {
     let chars = 0;
@@ -195,13 +221,15 @@ export function startStatusBar(state: TUIState, deps: StatusBarDeps): void {
   }
   state.animCacheRate = 0;
   drawStatusBar(state, deps);
+  drawModeBar(state);
   state.statusInterval = setInterval(() => {
     try {
       if (state.busy && state.statusFrameIdx % 4 === 0) {
-        state.lastMetricsSnapshot = getLiveMetrics(state.workspaceRoot);
+        state.lastHorsewhipStats = getHorsewhipStats(state.workspaceRoot);
       }
       clearStatusBar(state, deps);
       drawStatusBar(state, deps);
+      drawModeBar(state);
     } catch {
       // prevent interval death from transient errors (e.g. terminal resize race)
     }
@@ -216,7 +244,7 @@ export function stopStatusBar(state: TUIState, deps: StatusBarDeps): void {
   const u = state.agent?.getUsage() ?? state.lastKnownUsage;
   const isDeepSeek = state.agent ? state.agent.getProviderName() === "deepseek" : false;
   const { cols } = getTermSize();
-  const m = state.lastMetricsSnapshot ?? getLiveMetrics(state.workspaceRoot);
+  const m = state.lastHorsewhipStats ?? getHorsewhipStats(state.workspaceRoot);
 
   const sep = color.dim("│");
   const parts: string[] = [];
@@ -228,7 +256,7 @@ export function stopStatusBar(state: TUIState, deps: StatusBarDeps): void {
 
   const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
   parts.push(`ctx:${ctxPct}%`);
-  if (m) parts.push(`HITL:${m.humanInLoopCount}`);
+  if (m) parts.push(`HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
   const fullLine = parts.join(`  ${sep}  `);
 
   state.statusBarTopRow = getTermSize().rows - STATUS_BAR_HEIGHT;

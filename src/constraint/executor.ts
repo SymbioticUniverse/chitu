@@ -23,6 +23,7 @@ import {
   updatePlanSteps,
   checkBypass,
   readCompletion,
+  deleteCompletion,
   readUserGoal,
 } from "./iteration.js";
 
@@ -74,6 +75,8 @@ export class ConstraintExecutor {
   private headCommit = "";
   private originalSystemPrompt = "";
   private userGoal = "";
+  /** Set true when finalize() is called inside run()'s complete_sub_goal interception */
+  iterationCompleted = false;
 
   constructor(agent: Agent, workspaceRoot: string, mode: ConstraintMode = "creation") {
     this.agent = agent;
@@ -117,6 +120,7 @@ export class ConstraintExecutor {
     this.targetFiles = [];
     this.planPath = "";
     this.attempts = 0;
+    this.iterationCompleted = false;
     this.headCommit = "";
     try {
       this.headCommit = execSync("git rev-parse HEAD", {
@@ -137,7 +141,12 @@ export class ConstraintExecutor {
     this.headCommit = "";
   }
 
+  retryIteration(): void {
+    this.attempts = 0;
+  }
+
   rollback(): void {
+    deleteCompletion(this.workspaceRoot);
     if (!this.headCommit) return;
     try {
       execSync("git reset --hard HEAD", { cwd: this.workspaceRoot, timeout: 10000, stdio: "pipe" });
@@ -206,6 +215,8 @@ export class ConstraintExecutor {
       return `## Commit failed\n${commitResult.error}\n\nResolve and re-run.`;
     }
 
+    deleteCompletion(this.workspaceRoot);
+
     updatePlanSteps(this.workspaceRoot, this.planPath, this.targetFiles, capability);
 
     markPlanItemsDone(this.workspaceRoot, this.targetFiles);
@@ -232,6 +243,7 @@ export class ConstraintExecutor {
     const compactState = this.buildCompactState(capability);
     this.resetForNextIteration();
     this.agent.compactMessages(compactState);
+    this.iterationCompleted = true;
 
     return [
       `## Iteration Complete${attemptLabel}`,

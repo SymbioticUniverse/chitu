@@ -181,7 +181,7 @@ export function handleResize(state: TUIState, deps: ResizeDeps): void {
     const { cols, rows } = getTermSize();
     const u = state.lastKnownUsage;
     const isDeepSeek = state.agent ? state.agent.getProviderName() === "deepseek" : false;
-    const m = state.lastMetricsSnapshot;
+    const m = state.lastHorsewhipStats;
     const sep = color.dim("│");
     const parts: string[] = [];
     if (u && u.totalTokens > 0) {
@@ -190,7 +190,7 @@ export function handleResize(state: TUIState, deps: ResizeDeps): void {
     }
     const ctxPct = state.agent?.getContextUsage().percentage ?? 0;
     parts.push(`ctx:${ctxPct}%`);
-    if (m) parts.push(`HITL:${m.humanInLoopCount}`);
+    if (m) parts.push(`HW:${m.writesAllowed}✓ ${m.writesBlocked}✗`);
     if (parts.length > 0) {
       const fullLine = parts.join(`  ${sep}  `);
       state.statusBarTopRow = rows - 1; // STATUS_BAR_HEIGHT is 1

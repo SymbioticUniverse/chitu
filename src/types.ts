@@ -128,7 +128,6 @@ export interface Session {
   updatedAt: string;
   task: string;
   messages: Message[];
-  metrics?: MetricsReport;
   usage?: Usage;
   model?: string;
 }
@@ -272,10 +271,6 @@ export interface PlanStep {
   result?: string;
 }
 
-export interface MetricsReport {
-  task: string;
-  humanInLoopCount: number;
-}
 
 // --- Horsewhip Sync ---
 

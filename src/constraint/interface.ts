@@ -66,6 +66,85 @@ export function loadAllFileInterfaces(workspaceRoot: string): FileInterface[] {
   return results;
 }
 
+/** Discover all source files in the project. */
+export function discoverSourceFiles(workspaceRoot: string): string[] {
+  const excludeDirs = new Set([
+    ".git", ".chitu", ".horsewhip", "node_modules", "__pycache__",
+    ".venv", "venv", ".env", "dist", "build", ".next", ".nuxt",
+    ".DS_Store", "Thumbs.db",
+  ]);
+  const extensions = new Set([
+    ".py", ".pyw", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs",
+    ".vue", ".svelte",
+  ]);
+  const files: string[] = [];
+
+  function walk(dir: string) {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      if (e.name.startsWith(".") && excludeDirs.has(e.name)) continue;
+      if (excludeDirs.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(full); }
+      else if (e.isFile() && extensions.has(path.extname(e.name).toLowerCase())) {
+        files.push(path.relative(workspaceRoot, full));
+      }
+    }
+  }
+
+  walk(workspaceRoot);
+  return files;
+}
+
+/** Scan all source files and build interface docs for any not yet indexed.
+ *  Also re-parses existing docs that have empty exports (from before Python support).
+ *  Returns the complete set of interface docs after scanning. */
+export function scanAndIndexAllFiles(workspaceRoot: string): FileInterface[] {
+  const existing = new Map<string, FileInterface>();
+  for (const i of loadAllFileInterfaces(workspaceRoot)) {
+    existing.set(i.file, i);
+  }
+
+  const sourceFiles = discoverSourceFiles(workspaceRoot);
+  let added = 0;
+  let refreshed = 0;
+
+  for (const file of sourceFiles) {
+    const prev = existing.get(file);
+    // Re-parse if missing, or if exports/imports are empty, or if imports use old string[] format
+    const hasOldFormatImports = prev && Array.isArray(prev.imports) && prev.imports.length > 0 && typeof prev.imports[0] === "string";
+    const needsRefresh = !prev || (prev.exports.length === 0 && prev.imports.length === 0 && !prev.capability) || hasOldFormatImports;
+    if (!needsRefresh) continue;
+
+    const fullPath = path.join(workspaceRoot, file);
+    try {
+      const source = fs.readFileSync(fullPath, "utf-8");
+      const parsed = parseFileExportsAndImports(source, file);
+      const iface: FileInterface = {
+        file,
+        exports: parsed.exports,
+        imports: parsed.imports.map((i) => ({ symbol: i.symbol, from: i.from })),
+        capability: prev?.capability ?? "",
+        updatedAt: new Date().toISOString(),
+      };
+      writeFileInterface(workspaceRoot, iface);
+      existing.set(file, iface);
+      if (prev) refreshed++; else added++;
+    } catch { /* skip unreadable */ }
+  }
+
+  if (added > 0 || refreshed > 0) {
+    const parts: string[] = [];
+    if (added > 0) parts.push(`${added} new`);
+    if (refreshed > 0) parts.push(`${refreshed} refreshed`);
+    console.error(`[chitu] Interface index: ${parts.join(", ")}`);
+  }
+
+  return Array.from(existing.values());
+}
+
 /** Build the full dependency graph: which files depend on which. */
 export function buildDependencyGraph(interfaces: FileInterface[]): Map<string, string[]> {
   const graph = new Map<string, string[]>();
@@ -213,31 +292,47 @@ function renderTreeNode(
   }
 }
 
-/** Resolve a relative import path against the importing file's directory. */
+/** Resolve an import spec to a known file path in the project.
+ *  Handles JS/TS relative paths and Python dotted module paths. */
 function resolveImportPath(
   importerFile: string,
   importSpec: string,
   interfaces: FileInterface[],
 ): string | null {
-  // Try exact match
-  const exact = interfaces.find((i) => i.file === importSpec || i.file === importSpec + ".js" || i.file === importSpec + ".ts");
-  if (exact) return exact.file;
+  if (!importSpec || typeof importSpec !== "string") return null;
+  const knownFiles = new Set(interfaces.map((i) => i.file));
 
-  // Try resolving relative path
-  const importerDir = importerFile.replace(/\/[^/]+$/, "");
-  const candidates = [
-    importSpec,
-    importSpec + ".js",
-    importSpec + ".ts",
-    importSpec + "/index.js",
-    importSpec + "/index.ts",
-  ];
-  for (const c of candidates) {
-    const joined = importerDir ? `${importerDir}/${c}` : c;
-    const resolved = path.normalize(joined).replace(/\\/g, "/");
-    const match = interfaces.find((i) => i.file === resolved);
-    if (match) return match.file;
+  // 1. Exact match (already a file path)
+  if (knownFiles.has(importSpec)) return importSpec;
+
+  // 2. Try with extensions
+  for (const ext of [".py", ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"]) {
+    if (knownFiles.has(importSpec + ext)) return importSpec + ext;
   }
+
+  // 3. Relative path from importer's directory
+  const importerDir = importerFile.replace(/\/[^/]+$/, "");
+  for (const ext of ["", ".py", ".js", ".ts", "/index.js", "/index.ts", "/__init__.py"]) {
+    const joined = importerDir ? `${importerDir}/${importSpec}${ext}` : `${importSpec}${ext}`;
+    const resolved = path.normalize(joined).replace(/\\/g, "/");
+    if (knownFiles.has(resolved)) return resolved;
+  }
+
+  // 4. Python dotted module path: "app.service.llm_gateway" → "app/service/llm_gateway.py"
+  if (importSpec.includes(".")) {
+    const asPath = importSpec.replace(/\./g, "/") + ".py";
+    if (knownFiles.has(asPath)) return asPath;
+    // Also try without extension in case it's a package __init__
+    const asDir = importSpec.replace(/\./g, "/");
+    const initFile = asDir + "/__init__.py";
+    if (knownFiles.has(initFile)) return initFile;
+  }
+
+  // 5. Partial match: search for any file whose path ends with the import spec
+  for (const f of knownFiles) {
+    if (f.endsWith("/" + importSpec) || f.endsWith("/" + importSpec + ".py")) return f;
+  }
+
   return null;
 }
 
@@ -266,27 +361,40 @@ export function updateInterfacesAfterIteration(
   return loadAllFileInterfaces(workspaceRoot);
 }
 
+/** Detect language from file extension. */
+function detectLanguage(filePath: string): "js" | "python" | "unknown" {
+  const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
+  if ([".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"].includes(ext)) return "js";
+  if ([".py", ".pyw"].includes(ext)) return "python";
+  return "unknown";
+}
+
 /** Parse exports and imports from source code using regex.
- *  Fast static analysis — no AST, no parsing, works for JS/TS/Vue SFC. */
+ *  Fast static analysis — no AST, handles JS/TS/Vue/Python. */
 export function parseFileExportsAndImports(source: string, filePath: string): { exports: string[]; imports: { symbol: string; from: string }[] } {
+  const lang = detectLanguage(filePath);
+  if (lang === "python") return parsePython(source, filePath);
+  return parseJavaScript(source, filePath);
+}
+
+function parseJavaScript(source: string, filePath: string): { exports: string[]; imports: { symbol: string; from: string }[] } {
   const exports: string[] = [];
   const imports: { symbol: string; from: string }[] = [];
   const baseName = filePath.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+  let m: RegExpExecArray | null;
 
   // export const/let/var/function/class/interface/type/enum name
-  // Also: export async function name, export default function/class name
   const exportRe = /export\s+(?:const|let|var|function|class|interface|type|enum|async\s+function|default\s+(?:function|class)?)\s+(\w+)/g;
-  let m: RegExpExecArray | null;
   while ((m = exportRe.exec(source)) !== null) {
     if (m[1] && !exports.includes(m[1])) exports.push(m[1]);
   }
 
-  // export default <expression> (anonymous — use filename as export)
+  // export default <expression>
   if (/export\s+default\s+(?!function|class|interface|type\b)/.test(source) && !exports.includes(baseName)) {
     exports.push(baseName);
   }
 
-  // export { a, b, c }  and  export { a as b }
+  // export { a, b, c }
   const namedExportRe = /export\s*\{([^}]+)\}/g;
   while ((m = namedExportRe.exec(source)) !== null) {
     for (const name of m[1]!.split(",")) {
@@ -295,7 +403,7 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
     }
   }
 
-  // export { ... } from '...' — re-exports, treat as both import and export
+  // export { ... } from '...'
   const reExportRe = /export\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g;
   while ((m = reExportRe.exec(source)) !== null) {
     const from = m[2]!;
@@ -308,21 +416,18 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
     }
   }
 
-  // export * from '...' — star re-exports
+  // export * from '...'
   const starReExportRe = /export\s+\*\s+from\s+['"]([^'"]+)['"]/g;
   while ((m = starReExportRe.exec(source)) !== null) {
     imports.push({ symbol: "*", from: m[1]! });
   }
 
-  // import { a, b } from '...'  or  import X from '...'  or  import X, { a } from '...'
-  // Also: import type { ... } from '...'
+  // import { a, b } from '...'  or  import X from '...'
   const importRe = /import\s+(?:type\s+)?(?:(?:\{([^}]+)\})|(\w+))?(?:\s*,\s*(?:\{([^}]+)\})|(\w+))?\s+from\s+['"]([^'"]+)['"]/g;
   while ((m = importRe.exec(source)) !== null) {
     const from = m[5]!;
-    // Default import: import X from '...' (m[2]) or import X, { ... } from '...' (m[2] is default, m[3] is named)
     if (m[2] && m[2] !== "type") imports.push({ symbol: m[2], from });
     if (m[4] && m[4] !== "type") imports.push({ symbol: m[4], from });
-    // Named imports: { a, b }
     const namedBlock = m[1] || m[3];
     if (namedBlock) {
       for (const name of namedBlock.split(",")) {
@@ -332,13 +437,13 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
     }
   }
 
-  // import * as X from '...' — namespace import
+  // import * as X from '...'
   const nsImportRe = /import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g;
   while ((m = nsImportRe.exec(source)) !== null) {
     imports.push({ symbol: m[1]!, from: m[2]! });
   }
 
-  // import '...' — side-effect import (no symbol, just source)
+  // import '...' — side-effect
   const sideEffectRe = /import\s+['"]([^'"]+)['"]/g;
   while ((m = sideEffectRe.exec(source)) !== null) {
     const from = m[1]!;
@@ -347,7 +452,7 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
     }
   }
 
-  // CommonJS: module.exports = ...
+  // CommonJS: module.exports
   if (/module\.exports\s*=/.test(source)) {
     const cjsRe = /module\.exports\s*=\s*\{([^}]*)\}/g;
     while ((m = cjsRe.exec(source)) !== null) {
@@ -356,7 +461,6 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
         if (trimmed && !exports.includes(trimmed)) exports.push(trimmed);
       }
     }
-    // module.exports = singleValue
     if (/module\.exports\s*=\s*(?!\{)/.test(source) && !exports.includes(baseName)) {
       exports.push(baseName);
     }
@@ -366,6 +470,76 @@ export function parseFileExportsAndImports(source: string, filePath: string): { 
   const cjsNamedRe = /exports\.(\w+)\s*=/g;
   while ((m = cjsNamedRe.exec(source)) !== null) {
     if (m[1] && !exports.includes(m[1])) exports.push(m[1]);
+  }
+
+  return { exports, imports };
+}
+
+function parsePython(source: string, filePath: string): { exports: string[]; imports: { symbol: string; from: string }[] } {
+  const exports: string[] = [];
+  const imports: { symbol: string; from: string }[] = [];
+  const baseName = filePath.replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "");
+  let m: RegExpExecArray | null;
+
+  // def function_name(...) — top-level functions (no indent before def)
+  const defRe = /^(?:async\s+)?def\s+(\w+)\s*\(/gm;
+  while ((m = defRe.exec(source)) !== null) {
+    const name = m[1]!;
+    if (!name.startsWith("_") && !exports.includes(name)) exports.push(name);
+  }
+
+  // class ClassName(...) — top-level classes
+  const classRe = /^class\s+(\w+)\s*[:(]/gm;
+  while ((m = classRe.exec(source)) !== null) {
+    const name = m[1]!;
+    if (!name.startsWith("_") && !exports.includes(name)) exports.push(name);
+  }
+
+  // __all__ = ["a", "b", "c"]
+  const allRe = /^__all__\s*=\s*\[([^\]]+)\]/gm;
+  while ((m = allRe.exec(source)) !== null) {
+    for (const part of m[1]!.split(",")) {
+      const name = part.trim().replace(/^['"]|['"]$/g, "");
+      if (name && !exports.includes(name)) exports.push(name);
+    }
+  }
+
+  // from module import name1, name2, ...
+  const fromImportRe = /^from\s+(\S+)\s+import\s+(.+)$/gm;
+  while ((m = fromImportRe.exec(source)) !== null) {
+    const from = m[1]!;
+    const items = m[2]!;
+    if (items.trim() === "*") {
+      imports.push({ symbol: "*", from });
+      continue;
+    }
+    // Handle: import (name1, name2) multiline
+    const clean = items.replace(/[\\()]/g, " ").replace(/\s+/g, " ").trim();
+    for (const part of clean.split(",")) {
+      const trimmed = part.trim().replace(/\s+as\s+\w+/, "").trim();
+      if (trimmed) imports.push({ symbol: trimmed, from });
+    }
+  }
+
+  // import module  /  import module as alias
+  const importRe = /^import\s+(.+)$/gm;
+  while ((m = importRe.exec(source)) !== null) {
+    const items = m[1]!;
+    for (const part of items.split(",")) {
+      const trimmed = part.trim();
+      const asMatch = trimmed.match(/^(\S+)\s+as\s+(\w+)/);
+      if (asMatch) {
+        imports.push({ symbol: asMatch[2]!, from: asMatch[1]! });
+      } else {
+        const modName = trimmed.trim();
+        imports.push({ symbol: modName, from: modName });
+      }
+    }
+  }
+
+  // If no exports found and no __all__, export baseName (module itself is exportable)
+  if (exports.length === 0 && source.trim()) {
+    exports.push(baseName);
   }
 
   return { exports, imports };
