@@ -452,6 +452,29 @@ function parseJavaScript(source: string, filePath: string): { exports: string[];
     }
   }
 
+  // CommonJS: require('...') — const x = require('mod'), var x = require('mod'), let x = require('mod')
+  const requireRe = /(?:const|let|var)\s+(\w+)\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((m = requireRe.exec(source)) !== null) {
+    imports.push({ symbol: m[1]!, from: m[2]! });
+  }
+  // CommonJS destructured: const { a, b } = require('mod')
+  const requireDestructureRe = /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((m = requireDestructureRe.exec(source)) !== null) {
+    const from = m[2]!;
+    for (const name of m[1]!.split(",")) {
+      const trimmed = name.trim().replace(/\s+as\s+\w+/, "").trim();
+      if (trimmed) imports.push({ symbol: trimmed, from });
+    }
+  }
+  // bare require('...') for side-effects
+  const bareRequireRe = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((m = bareRequireRe.exec(source)) !== null) {
+    const from = m[1]!;
+    if (!imports.some((i) => i.from === from)) {
+      imports.push({ symbol: "(require)", from });
+    }
+  }
+
   // CommonJS: module.exports
   if (/module\.exports\s*=/.test(source)) {
     const cjsRe = /module\.exports\s*=\s*\{([^}]*)\}/g;
