@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import {
   ansi, color, write, getTermSize, enableRawMode,
   disableRawMode, setScrollRegion, resetScrollRegion,
+  isVSCodeTerminal,
 } from "./screen.js";
 import { Agent, buildUserContent } from "../agent.js";
 import { SessionManager } from "../session.js";
@@ -219,6 +220,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   };
 
   const updateScrollRegion = () => {
+    if (isVSCodeTerminal()) return; // VS Code: skip scroll regions
     const { rows } = getTermSize();
     const maxLines = getMaxInputLines(rows);
     const reserved = STATUS_BAR_HEIGHT + MODE_BAR_HEIGHT + maxLines;
@@ -230,7 +232,12 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   };
 
   const beginOutputBlock = () => {
-    write(ansi.moveTo(scrollRegionBottom(), 0) + ansi.clearLine + "\n");
+    if (isVSCodeTerminal()) {
+      // Manual scroll: move to bottom, insert a newline to push content up
+      write(ansi.saveCursor + ansi.moveTo(scrollRegionBottom(), 0) + ansi.clearLine + "\n" + ansi.restoreCursor);
+    } else {
+      write(ansi.moveTo(scrollRegionBottom(), 0) + ansi.clearLine + "\n");
+    }
   };
 
   // ── Hint system ──
@@ -306,7 +313,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (state.inputBoxHeight > prevInputBoxHeight && prevInputBoxHeight > 0) {
       const diff = state.inputBoxHeight - prevInputBoxHeight;
       for (let i = 0; i < diff; i++) {
-        write(ansi.moveTo(scrollRegionBottom(), 0) + "\n");
+        if (isVSCodeTerminal()) {
+          write(ansi.saveCursor + ansi.moveTo(scrollRegionBottom(), 0) + ansi.clearLine + "\n" + ansi.restoreCursor);
+        } else {
+          write(ansi.moveTo(scrollRegionBottom(), 0) + "\n");
+        }
       }
     }
 
@@ -1137,7 +1148,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     state.decoder.end();
     disableRawMode();
     write(ansi.bracketedPasteOff);
-    resetScrollRegion();
+    if (!isVSCodeTerminal()) resetScrollRegion();
     write(ansi.showCursor);
     write("\n\n" + color.dim("  Chitu stopped. Goodbye.") + "\n\n");
 

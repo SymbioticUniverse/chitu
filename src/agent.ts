@@ -594,7 +594,7 @@ export class Agent {
     onReasoning?: (text: string) => void,
     mode?: import("./types.js").ConstraintMode,
   ): Promise<string> {
-    const MAX_ITERATIONS = 100;
+    const MAX_ITERATIONS = 30;
     const executor = new ConstraintExecutor(this, this.workspaceRoot, mode ?? "creation");
     this.constraintExecutor = executor;
     try {
@@ -602,15 +602,26 @@ export class Agent {
       if (cp) { const sysMsg = this.messages[0]; this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages; }
       executor.setup();
 
+      // Unless resuming, ask AI to describe approach before locking
+      if (!cp) {
+        this.messages.push({
+          role: "user",
+          content: "Before you start, briefly describe your approach in 1-2 sentences. If there are multiple valid ways to do this, use `ask_user` to let me choose. Then call `horsewhip_lock_intent` to declare your boundary.",
+        });
+      }
+
       let finalResult = "";
       let iterationCount = 0;
       let gateFailures: string[] = [];        // accumulate gate feedback across rounds (survives compact)
       let compactRounds = 0;                  // times we've compacted on this iteration
+      let lastGateFailureHash = "";           // detect staleness — same failure repeating
+      let sameFailureStreak = 0;
 
       while (iterationCount < MAX_ITERATIONS) {
         iterationCount++;
         let iterationSucceeded = false;
         let aiStopped = false;
+        let aiAskedUser = false;
 
         while (executor.nextAttempt()) {
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
@@ -618,6 +629,14 @@ export class Agent {
 
           if (executor.iterationCompleted) {
             iterationSucceeded = true;
+            finalResult = result;
+            break;
+          }
+
+          // If AI called ask_user, pause and wait for user response
+          const lastMsg = this.messages[this.messages.length - 1];
+          if (lastMsg?.role === "assistant" && lastMsg.tool_calls?.some((tc) => tc.function.name === "ask_user")) {
+            aiAskedUser = true;
             finalResult = result;
             break;
           }
@@ -634,6 +653,14 @@ export class Agent {
             finalResult = `${result}\n\n${final}`;
             break;
           }
+          // Staleness detection: hash the gate failure by its first line + error type
+          const failureSig = gates.feedback.split("\n")[0]?.replace(/`[^`]*`/g, "_").trim() ?? "";
+          if (failureSig === lastGateFailureHash) {
+            sameFailureStreak++;
+          } else {
+            lastGateFailureHash = failureSig;
+            sameFailureStreak = 0;
+          }
           gateFailures.push(gates.feedback);
           this.messages.push({ role: "user", content: gates.feedback });
         }
@@ -644,9 +671,21 @@ export class Agent {
           onToolOutput?.("phase", `【约束模式已中断】${doneNote}`);
           return finalResult || "(aborted)";
         }
+        if (aiAskedUser) {
+          onToolOutput?.("phase", `【约束模式暂停 — AI 需要你的输入，请在下方回复后继续】`);
+          return finalResult || "(awaiting input)";
+        }
         if (aiStopped) {
           onToolOutput?.("phase", `【约束模式暂停 — 第 ${iterationCount} 轮迭代 AI 未调用 complete_sub_goal，等待继续】`);
           return finalResult || "(done)";
+        }
+        // Bail on consecutive identical gate failures — AI is stuck
+        if (sameFailureStreak >= 2) {
+          const doneCount = iterationCount - 1;
+          const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
+          onToolOutput?.("phase", `【约束模式暂停 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，AI 未做出有效修改。请给出更明确的指示后继续。】${doneNote}`);
+          executor.rollback();
+          return finalResult || "(task incomplete)";
         }
         if (!iterationSucceeded) {
           compactRounds++;
@@ -678,6 +717,8 @@ export class Agent {
         // Reset failure tracking for next iteration
         gateFailures = [];
         compactRounds = 0;
+        lastGateFailureHash = "";
+        sameFailureStreak = 0;
 
         this.messages.push({
           role: "user",

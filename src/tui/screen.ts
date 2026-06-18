@@ -51,6 +51,13 @@ export const color = {
   bgGray: (text: string) => `\x1b[48;5;235m\x1b[37m${text}\x1b[0m`,
 };
 
+// --- Terminal detection ---
+
+export function isVSCodeTerminal(): boolean {
+  return process.env.TERM_PROGRAM === "vscode" ||
+         process.env.TERM_PROGRAM === "vscode-terminal";
+}
+
 // --- Terminal size ---
 
 export function getTermSize(): { cols: number; rows: number } {
