@@ -685,7 +685,8 @@ export class Agent {
         this.messages.push({
           role: "user",
           content: [
-            "Take time to understand the task first. Read the relevant files, think about what needs to change.",
+            "Take time to understand the task first. **Read the actual source files** (not just interface docs) to understand the current implementation.",
+            "If the user reports a bug, trace the code path — don't just fix the symptom. Look for related issues: similar patterns elsewhere may have the same bug.",
             "",
             "If anything is unclear, ask me. If there are multiple valid approaches, use `ask_user` to let me choose.",
             "",
