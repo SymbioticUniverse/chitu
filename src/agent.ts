@@ -94,6 +94,7 @@ export class Agent {
   private paradigmState: ParadigmState = { active: "ride", resolved: "ride" };
   private yunchang = false;
   constraintExecutor: ConstraintExecutor | null = null;
+  private pendingExpandRequest: { paths: string[]; reason: string } | null = null;
   private _srcCountCache: { value: number; at: number } = { value: 0, at: 0 };
 
   constructor(
@@ -602,6 +603,27 @@ export class Agent {
       if (cp) { const sysMsg = this.messages[0]; this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages; }
       executor.setup();
 
+      // If returning from a pending expand approval, apply it now
+      if (this.pendingExpandRequest) {
+        const pending = this.pendingExpandRequest;
+        this.pendingExpandRequest = null;
+        const lastUserMsg = [...this.messages].reverse().find((m) => m.role === "user");
+        const userText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content.toLowerCase().trim() : "";
+        if (userText.startsWith("yes") || userText.startsWith("ok") || userText.startsWith("同意") || userText.startsWith("批准") || userText.startsWith("confirm") || userText.startsWith("approve")) {
+          this.guard?.expandBoundary(pending.paths, pending.reason);
+          executor.recordExpand(pending.paths, pending.reason);
+          this.messages.push({
+            role: "user",
+            content: `Boundary expanded to include: ${pending.paths.join(", ")}. Reason: ${pending.reason}. Proceed with the expanded boundary.`,
+          });
+        } else {
+          this.messages.push({
+            role: "user",
+            content: `Boundary expansion was NOT approved by the user. Do NOT modify files outside your original boundary. Response: ${userText.slice(0, 200)}`,
+          });
+        }
+      }
+
       // Unless resuming, ask AI to describe approach before locking
       if (!cp) {
         this.messages.push({
@@ -642,6 +664,14 @@ export class Agent {
             aiAskedUser = true;
             finalResult = result;
             break;
+          }
+
+          // If AI called expand_boundary, pause for human approval
+          if (executor.pendingExpand) {
+            this.pendingExpandRequest = executor.pendingExpand;
+            const pe = executor.pendingExpand;
+            onToolOutput?.("phase", `【边界扩展需要确认 — AI 想修改 ${pe.paths.length} 个额外文件：${pe.paths.join(", ")}。原因：${pe.reason}。回复 "yes" 批准，或给其他指示。】`);
+            return finalResult || "(awaiting expand approval)";
           }
 
           const completed = executor.ensureBoundary();

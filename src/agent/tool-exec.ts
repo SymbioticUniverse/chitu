@@ -136,9 +136,18 @@ async function handleHorsewhipTool(
         if (!check.ok) return JSON.stringify({ ok: false, error: check.error });
       }
       const reason = (args["reason"] as string) ?? "unspecified";
-      ctx.guard.expandBoundary(paths, reason);
-      ctx.constraintExecutor?.recordExpand(paths, reason);
-      return JSON.stringify({ ok: true, expanded: paths });
+      // Store pending expand — requires human approval before executing
+      if (ctx.constraintExecutor) {
+        ctx.constraintExecutor.pendingExpand = { paths, reason };
+      }
+      const fileList = paths.map((p) => `\`${p}\``).join(", ");
+      return JSON.stringify({
+        ok: false,
+        need_approval: true,
+        paths,
+        reason,
+        message: `## Boundary expansion requires your approval\n\nAI wants to expand the boundary to include:\n${paths.map((p) => `  - ${p}`).join("\n")}\n\nReason: ${reason}\n\nReply **"yes"** to approve, or give different instructions.`,
+      });
     }
     case "horsewhip_lock_decouple":
     case "horsewhip_lock_append_only":

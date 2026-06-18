@@ -77,6 +77,8 @@ export class ConstraintExecutor {
   private userGoal = "";
   /** Set true when finalize() is called inside run()'s complete_sub_goal interception */
   iterationCompleted = false;
+  /** Pending boundary expand awaiting user approval */
+  pendingExpand: { paths: string[]; reason: string } | null = null;
 
   constructor(agent: Agent, workspaceRoot: string, mode: ConstraintMode = "creation") {
     this.agent = agent;

@@ -28,7 +28,7 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "### Each Iteration",
   "",
-  "4. **Declare boundary upfront**: For each sub-goal, list ALL files you will touch (create, modify, or delete) and call `horsewhip_lock_intent` with ALL of them at once. If you later discover you need an additional file, call `horsewhip_lock_intent` again with the expanded list — this is more reliable than `horsewhip_expand_boundary`.",
+  "4. **Declare boundary upfront**: For each sub-goal, list ALL files you will touch (create, modify, or delete) and call `horsewhip_lock_intent` with ALL of them at once. If you later discover you need an additional file, call `horsewhip_lock_intent` again with the expanded list — this is preferred over `horsewhip_expand_boundary`, which pauses the workflow for human approval.",
   "",
   "5. **Work** within the boundary. Import from existing modules via their documented interfaces. If the sub-goal requires deleting files, include them in the boundary declaration too.",
   "",
