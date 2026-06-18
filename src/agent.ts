@@ -690,7 +690,7 @@ export class Agent {
             "",
             "If anything is unclear, ask me. If there are multiple valid approaches, use `ask_user` to let me choose.",
             "",
-            "**Do NOT call `horsewhip_lock_intent` yet.** First describe your understanding and proposed approach. Wait for me to confirm, then proceed.",
+            "Describe your understanding and proposed approach, then call `horsewhip_lock_intent` to declare your boundary and start working. Do NOT wait for confirmation — proceed automatically.",
           ].join("\n"),
         });
       }
@@ -747,14 +747,11 @@ export class Agent {
               tc.function.name === "mcp__horsewhip__horsewhip_lock_intent" ||
               tc.function.name === "horsewhip_lock_intent"
             );
-            if (calledLockIntent) {
-              // AI jumped straight to lock_intent — let it proceed
-              // (it described in the same turn, which is acceptable)
-            } else {
-              // AI described without locking — confirm and tell it to proceed
+            if (!calledLockIntent) {
+              // AI described without locking — nudge to lock and proceed
               this.messages.push({
                 role: "user",
-                content: "Got it. Call `horsewhip_lock_intent` to declare your boundary, then implement the changes.",
+                content: "Call `horsewhip_lock_intent` to declare your boundary and start working.",
               });
             }
             continue;
