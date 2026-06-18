@@ -849,6 +849,10 @@ export class Agent {
         lastGateFailureHash = "";
         sameFailureStreak = 0;
 
+        // Reset completion flag so the next iteration's inner loop doesn't immediately break.
+        // (finalize() sets this to true; it must be false at the start of each new iteration.)
+        executor.iterationCompleted = false;
+
         // Detect completion: if AI says all done without locking new files, stop
         const doneSignals = /(?:全部完成|所有.*完成|项目.*完结|全量交付|all\s*(?:done|complete|delivered)|no\s*more|nothing\s*(?:left|more)|已完结|静候|等待.*(?:新|下一))/i;
         const lastAssistantMsg = [...this.messages].reverse().find((m) => m.role === "assistant");
@@ -857,7 +861,7 @@ export class Agent {
           tc.function.name === "mcp__horsewhip__horsewhip_lock_intent" ||
           tc.function.name === "horsewhip_lock_intent"
         );
-        if (doneSignals.test(lastAssistantText) && !calledLockIntent && !executor.iterationCompleted) {
+        if (doneSignals.test(lastAssistantText) && !calledLockIntent) {
           onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，AI 报告任务已全部交付】`);
           return finalResult || "(task complete)";
         }
