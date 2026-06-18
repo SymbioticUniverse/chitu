@@ -977,40 +977,53 @@ export class Agent {
     await yield_();
   }
 
-  /** Rule-based pre-filter: catch unambiguously conversational messages before LLM classification. */
-  private preFilterIntent(text: string): "chat" | null {
+  /**
+   * Check if the message contains clear signals that the user wants autonomous coding work.
+   * If there's no task signal, we skip the LLM entirely and treat it as chat.
+   * Only ambiguous-but-possibly-task messages reach the LLM for a second opinion.
+   */
+  private hasTaskSignals(text: string): boolean {
     const t = text.trim();
-    if (!t) return "chat";
+    if (!t) return false;
 
-    // /commands → chat
-    if (/^\/\w+/.test(t)) return "chat";
+    // Continuation / explicit go-ahead
+    if (/^(继续|go\s*ahead|proceed|ok\s*start|开始吧|开工|干活)\b/i.test(t)) return true;
 
-    // Pure greetings → chat
-    if (/^(你好|hi|hello|hey|嗨|在吗|早上好|晚上好|下午好|哦|嗯|好的|知道了|收到|ok|OK)[\s!！。.，,]*$/i.test(t)) return "chat";
+    // Chinese action verbs — user wants something done
+    if (/创建|修复|实现|添加|删除|重构|优化|设计|开发|搭建|配置|部署|修改|更新|升级|迁移|测试|调试|构建|编译|打包|发布|回滚|合并|拆分|提取|封装|抽象|简化|生成|转换|导入|导出|加密|解密|压缩|解压|验证|检查|审计|扫描|分析|监控|同步|缓存|清理|重置|恢复|替换|重命名|移动|复制|备份|安装|卸载/.test(t)) return true;
 
-    // Questions about AI's perceptual/understanding ability: 能听明白吗/能听到吗/能看见吗 etc.
-    // Must NOT match task requests like 能帮我/能实现/能创建/能修复
-    if (/能\s*(听|看|理解|明白|懂|听到|看见|听懂|听明白|看清楚|听到吗|看到吗|明白吗|懂吗)/.test(t) && !/能\s*(帮|做|实现|修复|创建|写|改|弄|搞|处理|解决|添加|删除|重构|优化|设计|开发|搭建|配置|部署)/.test(t)) return "chat";
+    // English action verbs
+    if (/\b(create|fix|implement|add|remove|delete|refactor|optimize|design|develop|build|configure|deploy|modify|update|upgrade|migrate|test|debug|compile|publish|rollback|merge|split|extract|encapsulate|generate|convert|import|export|verify|check|audit|scan|analyze|monitor|sync|cache|clean|reset|restore|replace|rename|move|copy|backup|install|uninstall)\b/i.test(t)) return true;
 
-    // Explicit feedback about AI behavior → chat (user frustrated, not giving tasks)
-    if (/答非所问|莫名其妙|听不懂|不明白你在说什么|你在干嘛|你在干什么/.test(t)) return "chat";
+    // File path pattern (e.g. src/foo.ts, api.py, components/Button.jsx)
+    if (/[a-zA-Z0-9_/\\]+\.[a-zA-Z]{1,6}\b/.test(t)) return true;
 
-    // null = not caught by pre-filter, fall through to LLM
-    return null;
+    // Code / technical terms that suggest a coding task
+    if (/\b(api|bug|feature|function|class|interface|type|module|component|endpoint|route|handler|middleware|service|controller|model|schema|query|mutation|endpoint|database|table|column|index|server|client|request|response|error|exception|crash|break|fail|broken|doesn'?t\s*work|not\s*working)\b/i.test(t)) return true;
+    if (/\b(接口|功能|函数|类|模块|组件|端点|路由|服务|控制器|模型|数据库|表|字段|查询|服务器|客户端|请求|响应|错误|异常|崩溃|报错|不工作|坏了)\b/.test(t)) return true;
+
+    return false;
   }
 
   /** Use LLM to classify user intent: "chat" (respond naturally) or "task" (constraint workflow). */
   private async classifyIntent(text: string): Promise<"chat" | "task"> {
-    // Pre-filter catches obvious chat patterns without an LLM round-trip
-    const pre = this.preFilterIntent(text);
-    if (pre !== null) return pre;
+    const t = text.trim();
+    if (!t) return "chat";
 
+    // /commands → always chat
+    if (/^\/\w+/.test(t)) return "chat";
+
+    // No task signals → chat (skip LLM entirely — safe default)
+    if (!this.hasTaskSignals(t)) return "chat";
+
+    // Has task signals → ask LLM for a second opinion
+    // (prevents false positives like "能帮我看看这个bug吗" → actually asking, not tasking)
     try {
       const result = await this.provider.chat({
         model: this.model,
         messages: [
           { role: "system", content: INTENT_CLASSIFY_PROMPT },
-          { role: "user", content: text.slice(0, 1000) },
+          { role: "user", content: t.slice(0, 1000) },
         ],
         max_tokens: 20,
       });
