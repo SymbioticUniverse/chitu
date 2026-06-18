@@ -623,13 +623,12 @@ export class Agent {
 
       if (userIntent === "chat") {
         // Chat mode: respond naturally, no boundary locking, no iteration loop
+        // Clear any leftover expand state from previous iterations
         this.pendingExpandRequest = null;
         this.pendingExpandApproved = null;
         executor.pendingExpand = null;
-        if (cp) {
-          const sysMsg = this.messages[0];
-          this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages;
-        }
+        // Do NOT restore checkpoint — keep current messages so the model sees the user's actual chat.
+        // (The checkpoint stays on disk for a future "继续" to resume.)
         // Inject chat-mode instruction so the model doesn't continue previous task
         this.messages.push({
           role: "user",
@@ -641,12 +640,22 @@ export class Agent {
           ].join("\n"),
         });
         const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
-        if (cp) this.writeCheckpoint("chat_interrupt");
         return result || "(response)";
       }
 
       // ── Task mode: full constraint workflow ──
-      if (cp) { const sysMsg = this.messages[0]; this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages; }
+      // Only restore checkpoint for explicit continuation signals.
+      // For new tasks, discard stale checkpoint so the model focuses on the new task.
+      const isContinuation = /^(继续|go\s*ahead|proceed|ok\s*start|开始吧|开工|干活)\s*$/i.test(userText.trim());
+      if (cp && isContinuation) {
+        const sysMsg = this.messages[0];
+        this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages;
+      } else if (cp) {
+        // New task — stale checkpoint, discard it. Clear any leftover expand state too.
+        deleteCp(this.workspaceRoot);
+        this.pendingExpandRequest = null;
+        this.pendingExpandApproved = null;
+      }
       executor.setup();
 
       // If returning from a pending expand approval, apply it now
