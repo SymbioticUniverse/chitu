@@ -43,14 +43,17 @@ export class HorsewhipGuardImpl implements HorsewhipGuard {
 
     // Hard system protection: .chitu/ is append-only
     if (relPath.startsWith(".chitu/")) {
-      if (!relPath.startsWith(".chitu/plans/") && !relPath.startsWith(".chitu/interfaces/")) {
-        const absPath = path.resolve(this.workspaceRoot, relPath);
-        try {
-          if (fs.existsSync(absPath) && fs.statSync(absPath).size > 0) {
-            return { allowed: false, path: relPath, reason: ".chitu/ is append-only: existing files cannot be overwritten or deleted. Create a new file if needed." };
-          }
-        } catch { /* file doesn't exist — allow creation */ }
+      // Chitu metadata dirs — always writable, bypass boundary entirely
+      if (relPath.startsWith(".chitu/plans/") || relPath.startsWith(".chitu/interfaces/") ||
+          relPath.startsWith(".chitu/completions/") || relPath.startsWith(".chitu/context/")) {
+        return { allowed: true, path: relPath };
       }
+      const absPath = path.resolve(this.workspaceRoot, relPath);
+      try {
+        if (fs.existsSync(absPath) && fs.statSync(absPath).size > 0) {
+          return { allowed: false, path: relPath, reason: ".chitu/ is append-only: existing files cannot be overwritten or deleted. Create a new file if needed." };
+        }
+      } catch { /* file doesn't exist — allow creation */ }
     }
 
     const state = this.boundary.read();
@@ -318,10 +321,14 @@ export class HorsewhipGuardImpl implements HorsewhipGuard {
 
   lockIntent(task: string, allowed: string[], core?: string[], edge?: string[], reasons?: Record<string, string>, gates?: BoundaryGates): void {
     this.boundary.ensureDir();
-    const valid = allowed.filter((p) => PATH_RE.test(p) && !/[<>"(){}[\]|;:$!@#%^&*+=?~`,\\]/.test(p));
+    const isChituMeta = (p: string) => p.startsWith(".chitu/");
+    const isPathSafe = (p: string) => PATH_RE.test(p) && !/[<>"(){}[\]|;:$!@#%^&*+=?~`,\\]/.test(p);
+    const valid = allowed.filter((p) => isChituMeta(p) || isPathSafe(p));
     if (valid.length !== allowed.length) {
-      const dropped = allowed.filter((p) => !PATH_RE.test(p) || /[<>"(){}[\]|;:$!@#%^&*+=?~`,\\]/.test(p));
-      console.error(`[guard] Dropped ${dropped.length} invalid path(s) from lockIntent: ${dropped.join(", ")}`);
+      const dropped = allowed.filter((p) => !isChituMeta(p) && !isPathSafe(p));
+      if (dropped.length > 0) {
+        console.error(`[guard] Dropped ${dropped.length} invalid path(s) from lockIntent: ${dropped.join(", ")}`);
+      }
     }
     const oldState = this.boundary.read();
     const oldAllowed = new Set(oldState.allowed ?? []);
