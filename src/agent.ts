@@ -623,10 +623,23 @@ export class Agent {
 
       if (userIntent === "chat") {
         // Chat mode: respond naturally, no boundary locking, no iteration loop
+        this.pendingExpandRequest = null;
+        this.pendingExpandApproved = null;
+        executor.pendingExpand = null;
         if (cp) {
           const sysMsg = this.messages[0];
           this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages;
         }
+        // Inject chat-mode instruction so the model doesn't continue previous task
+        this.messages.push({
+          role: "user",
+          content: [
+            "The user's message above is conversational — a question, feedback, or chat.",
+            "Do NOT call any Horsewhip tools (horsewhip_lock_intent, horsewhip_expand_boundary, etc.).",
+            "Do NOT start the constraint workflow. Do NOT edit files.",
+            "Just respond naturally and concisely to what the user said.",
+          ].join("\n"),
+        });
         const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
         if (cp) this.writeCheckpoint("chat_interrupt");
         return result || "(response)";
@@ -1014,6 +1027,8 @@ const INTENT_CLASSIFY_PROMPT = [
   "Examples:",
   "能听明白我说话了吗 → chat",
   "能听到了吗 → chat",
+  "你能听见我说话吗 → chat",
+  "你听得到吗 → chat",
   "chitu → chat",
   "你好 → chat",
   "在吗 → chat",
@@ -1022,6 +1037,7 @@ const INTENT_CLASSIFY_PROMPT = [
   "这个是怎么实现的 → chat",
   "为什么改了那个文件 → chat",
   "感觉不太对 → chat",
+  "这是什么意思 → chat",
   "",
   "继续 → task",
   "帮我创建一个用户API → task",
