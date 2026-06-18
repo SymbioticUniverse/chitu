@@ -600,7 +600,7 @@ export class Agent {
     const executor = new ConstraintExecutor(this, this.workspaceRoot, mode ?? "creation");
     this.constraintExecutor = executor;
     try {
-      const cp = this.loadCheckpoint();
+      let cp = this.loadCheckpoint();
 
       // ── Intent detection (always, regardless of checkpoint) ──
       // Use LLM to classify: "chat" (question/feedback/discussion) vs "task" (coding task).
@@ -653,6 +653,7 @@ export class Agent {
       } else if (cp) {
         // New task — stale checkpoint, discard it. Clear any leftover expand state too.
         deleteCp(this.workspaceRoot);
+        cp = null;
         this.pendingExpandRequest = null;
         this.pendingExpandApproved = null;
       }
