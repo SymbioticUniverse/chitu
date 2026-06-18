@@ -620,10 +620,12 @@ export class Agent {
       while (iterationCount < MAX_ITERATIONS) {
         iterationCount++;
         let iterationSucceeded = false;
-        let aiStopped = false;
         let aiAskedUser = false;
+        let gateAttempts = 0;
 
-        while (executor.nextAttempt()) {
+        // Inner loop: keep running until sub-goal done, user input needed, or gates exhaust retries.
+        // "Still working" (no complete_sub_goal yet) does NOT consume a gate attempt.
+        while (gateAttempts < executor.maxAttempts) {
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
           if (signal?.aborted) { executor.rollback(); return result || "(aborted)"; }
 
@@ -642,7 +644,14 @@ export class Agent {
           }
 
           const completed = executor.ensureBoundary();
-          if (!completed) { finalResult = result; aiStopped = true; break; }
+          if (!completed) {
+            // AI still working — nudge to call complete_sub_goal when ready
+            this.messages.push({
+              role: "user",
+              content: "You have not called `complete_sub_goal` yet. If this sub-goal is done, call `complete_sub_goal` with your exports/imports. Otherwise continue working.",
+            });
+            continue;
+          }
           if (completed.feedback) { this.messages.push({ role: "user", content: completed.feedback }); continue; }
 
           const gates = executor.verifyGates(completed.exports, completed.imports);
@@ -653,7 +662,8 @@ export class Agent {
             finalResult = `${result}\n\n${final}`;
             break;
           }
-          // Staleness detection: hash the gate failure by its first line + error type
+          // Gate failure — THIS consumes an attempt
+          gateAttempts++;
           const failureSig = gates.feedback.split("\n")[0]?.replace(/`[^`]*`/g, "_").trim() ?? "";
           if (failureSig === lastGateFailureHash) {
             sameFailureStreak++;
@@ -674,10 +684,6 @@ export class Agent {
         if (aiAskedUser) {
           onToolOutput?.("phase", `【约束模式暂停 — AI 需要你的输入，请在下方回复后继续】`);
           return finalResult || "(awaiting input)";
-        }
-        if (aiStopped) {
-          onToolOutput?.("phase", `【约束模式暂停 — 第 ${iterationCount} 轮迭代 AI 未调用 complete_sub_goal，等待继续】`);
-          return finalResult || "(done)";
         }
         // Bail on consecutive identical gate failures — AI is stuck
         if (sameFailureStreak >= 2) {
