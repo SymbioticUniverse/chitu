@@ -332,7 +332,7 @@ export function createInputHandlers(
       }
       if (state.pendingRawInput[0] === "\x1b") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
-        if (state.streaming) state.taskAbort?.abort();
+        if (state.busy || state.streaming) state.taskAbort?.abort();
         continue;
       }
       if (state.pendingRawInput[0] === "\x7f" || state.pendingRawInput[0] === "\b") {

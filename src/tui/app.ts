@@ -968,9 +968,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     let lastResponse = "";
 
     let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+    let watchdogAbortTimer: ReturnType<typeof setTimeout> | undefined;
     let watchdogFired = false;
     const resetWatchdog = () => {
       if (watchdogTimer) clearTimeout(watchdogTimer);
+      if (watchdogAbortTimer) clearTimeout(watchdogAbortTimer);
       watchdogFired = false;
       watchdogTimer = setTimeout(() => {
         watchdogFired = true;
@@ -995,7 +997,14 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         // Show visible warning in TUI
         if (!streamOpened) { beginOutputBlock(); streamOpened = true; state.printingAssistant = true; }
         write("\n" + color.brightRed("⚠ 已 60 秒无工具调用，AI 可能卡住了。") + "\n");
-        write(color.dim("  按 ESC 或 Ctrl+C 可中断当前任务，然后输入新指令。") + "\n\n");
+        write(color.dim("  15 秒后将自动中断，按 ESC 或 Ctrl+C 可立即中断。") + "\n\n");
+        // Auto-abort after grace period
+        watchdogAbortTimer = setTimeout(() => {
+          if (state.taskAbort && !state.taskAbort.signal.aborted) {
+            state.taskAbort.abort();
+            write("\n" + color.brightRed("⛔ 看门狗自动中断 — AI 无响应已超 75 秒。") + "\n\n");
+          }
+        }, 15_000);
       }, WATCHDOG_IDLE_MS);
     };
     resetWatchdog();
@@ -1072,6 +1081,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       }
     } finally {
       if (watchdogTimer) clearTimeout(watchdogTimer);
+      if (watchdogAbortTimer) clearTimeout(watchdogAbortTimer);
       state.streamQueue = "";
       stopStreamDrain(state);
       stopStatusBar(state, statusBarDeps);

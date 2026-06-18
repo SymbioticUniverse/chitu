@@ -242,13 +242,26 @@ export function extractFilePaths(text: string): string[] {
 // ── anySignal helper ──
 
 export function anySignal(signals: AbortSignal[]): AbortSignal {
+  // Use native AbortSignal.any() if available (Node 20.3+), which handles
+  // listener cleanup properly and avoids MaxListenersExceededWarning.
+  if (typeof (AbortSignal as any).any === "function") {
+    return (AbortSignal as any).any(signals);
+  }
+  // Fallback for older Node versions
   const controller = new AbortController();
+  const cleanup = () => {
+    for (const { sig, fn } of listeners) sig.removeEventListener("abort", fn);
+    listeners.length = 0;
+  };
+  const listeners: Array<{ sig: AbortSignal; fn: () => void }> = [];
   for (const sig of signals) {
     if (sig.aborted) {
       controller.abort(sig.reason);
       return controller.signal;
     }
-    sig.addEventListener("abort", () => controller.abort(sig.reason), { once: true });
+    const fn = () => { controller.abort(sig.reason); cleanup(); };
+    listeners.push({ sig, fn });
+    sig.addEventListener("abort", fn, { once: true });
   }
   return controller.signal;
 }
