@@ -977,9 +977,34 @@ export class Agent {
     await yield_();
   }
 
+  /** Rule-based pre-filter: catch unambiguously conversational messages before LLM classification. */
+  private preFilterIntent(text: string): "chat" | null {
+    const t = text.trim();
+    if (!t) return "chat";
+
+    // /commands → chat
+    if (/^\/\w+/.test(t)) return "chat";
+
+    // Pure greetings → chat
+    if (/^(你好|hi|hello|hey|嗨|在吗|早上好|晚上好|下午好|哦|嗯|好的|知道了|收到|ok|OK)[\s!！。.，,]*$/i.test(t)) return "chat";
+
+    // Questions about AI's perceptual/understanding ability: 能听明白吗/能听到吗/能看见吗 etc.
+    // Must NOT match task requests like 能帮我/能实现/能创建/能修复
+    if (/能\s*(听|看|理解|明白|懂|听到|看见|听懂|听明白|看清楚|听到吗|看到吗|明白吗|懂吗)/.test(t) && !/能\s*(帮|做|实现|修复|创建|写|改|弄|搞|处理|解决|添加|删除|重构|优化|设计|开发|搭建|配置|部署)/.test(t)) return "chat";
+
+    // Explicit feedback about AI behavior → chat (user frustrated, not giving tasks)
+    if (/答非所问|莫名其妙|听不懂|不明白你在说什么|你在干嘛|你在干什么/.test(t)) return "chat";
+
+    // null = not caught by pre-filter, fall through to LLM
+    return null;
+  }
+
   /** Use LLM to classify user intent: "chat" (respond naturally) or "task" (constraint workflow). */
   private async classifyIntent(text: string): Promise<"chat" | "task"> {
-    if (!text.trim()) return "chat"; // empty message → chat
+    // Pre-filter catches obvious chat patterns without an LLM round-trip
+    const pre = this.preFilterIntent(text);
+    if (pre !== null) return pre;
+
     try {
       const result = await this.provider.chat({
         model: this.model,
@@ -990,13 +1015,11 @@ export class Agent {
         max_tokens: 20,
       });
       const label = (result.choices[0]?.message?.content ?? "").trim().toLowerCase();
-      // Match both English and Chinese responses
       if (/chat|聊天|对话|提问|问题|讨论|问答|咨询/i.test(label)) return "chat";
       if (/task|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
-      // Ambiguous: default to chat (safer — AI responds instead of iterating)
       return "chat";
     } catch {
-      return "chat"; // fail safe: if LLM call fails, chat (AI responds naturally)
+      return "chat";
     }
   }
 }
