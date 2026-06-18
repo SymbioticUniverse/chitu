@@ -140,13 +140,12 @@ async function handleHorsewhipTool(
       if (ctx.constraintExecutor) {
         ctx.constraintExecutor.pendingExpand = { paths, reason };
       }
-      const fileList = paths.map((p) => `\`${p}\``).join(", ");
       return JSON.stringify({
-        ok: false,
-        need_approval: true,
+        ok: true,
+        pending_approval: true,
         paths,
         reason,
-        message: `## Boundary expansion requires your approval\n\nAI wants to expand the boundary to include:\n${paths.map((p) => `  - ${p}`).join("\n")}\n\nReason: ${reason}\n\nReply **"yes"** to approve, or give different instructions.`,
+        message: "Boundary expansion submitted for human approval. The workflow has paused. Do NOT call expand_boundary again — wait for the approval result.",
       });
     }
     case "horsewhip_lock_decouple":

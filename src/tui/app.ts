@@ -301,6 +301,42 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
   const drawPrompt = (returnToScrollArea = false) => {
     const { cols, rows } = getTermSize();
     const contentWidth = Math.max(1, cols - 2);
+
+    // ── Expand approval selection UI ──
+    if (state.expandApproval) {
+      updateScrollRegion();
+      write(ansi.saveCursor);
+      drawHintPanel(state, statusBarDeps);
+      drawModeBar(state);
+      write(ansi.restoreCursor);
+
+      const promptBottom = Math.max(0, rows - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1);
+      const approveSelected = state.expandApproval.selectedIndex === 0;
+      const denySelected = state.expandApproval.selectedIndex === 1;
+      const HL = "\x1b[48;5;240m";
+      const SEL = "\x1b[48;5;28m";
+      const DEN = "\x1b[48;5;88m";
+
+      // Line 1: approve option
+      const approveBg = approveSelected ? SEL : HL;
+      write(ansi.moveTo(promptBottom - 1, 0) + approveBg + ansi.clearLine +
+        color.white("  " + (approveSelected ? "▶ " : "  ") + "Approve — allow modifying additional files") + "\x1b[K" + ansi.reset);
+      // Line 0: deny option
+      const denyBg = denySelected ? DEN : HL;
+      write(ansi.moveTo(promptBottom, 0) + denyBg + ansi.clearLine +
+        color.white("  " + (denySelected ? "▶ " : "  ") + "Deny — keep original boundary") + "\x1b[K" + ansi.reset);
+
+      // Extra line for file info
+      const filesText = state.expandApproval.paths.join(", ");
+      write(ansi.moveTo(promptBottom - 2, 0) + ansi.clearLine + color.dim(`  Files: ${filesText.slice(0, cols - 10)}`) + ansi.reset);
+
+      write(ansi.moveTo(promptBottom, 0));
+      state.inputBoxDrawn = true;
+      state.inputBoxHeight = 2;
+      state.inputBoxTopRow = Math.max(0, promptBottom - 1);
+      return;
+    }
+
     const allInputLines = splitInputLinesToWidth(state.inputBuffer, contentWidth);
     const maxInputLines = getMaxInputLines(rows);
     const visibleLines = allInputLines.slice(-maxInputLines);
@@ -326,8 +362,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     const curHintH = getHintHeight();
     if (state.prevHintHeight > curHintH) {
       const { rows: r2 } = getTermSize();
-      const promptBottom = r2 - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1;
-      const inputBoxTop = promptBottom - state.inputBoxHeight + 1;
+      const promptBottom2 = r2 - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1;
+      const inputBoxTop = promptBottom2 - state.inputBoxHeight + 1;
       const hintEnd = inputBoxTop - 1;
       for (let i = curHintH; i < state.prevHintHeight; i++) {
         const row = hintEnd - i;
@@ -344,7 +380,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     const isCommand = state.inputBuffer.startsWith("/");
     const USER_INPUT_BG = "\x1b[48;5;236m";
 
-    const promptBottom = Math.max(0, rows - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1);
+    const promptBottom3 = Math.max(0, rows - STATUS_BAR_HEIGHT - MODE_BAR_HEIGHT - 1);
     for (let i = 0; i < visibleLines.length; i++) {
       const lineIdx = visibleLines.length - 1 - i;
       const isFirstVisibleLine = lineIdx === 0;
@@ -354,11 +390,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       const line = visibleLines[lineIdx] ?? "";
       const contentColor = isCommand ? color.red : color.white;
       const rendered = color.bold(color.white(prefix)) + contentColor(trimLeftToWidth(line, contentWidth));
-      write(ansi.moveTo(promptBottom - i, 0) + USER_INPUT_BG + ansi.clearLine + rendered + "\x1b[K" + ansi.reset);
+      write(ansi.moveTo(promptBottom3 - i, 0) + USER_INPUT_BG + ansi.clearLine + rendered + "\x1b[K" + ansi.reset);
     }
 
     const lastVisibleLine = visibleLines[visibleLines.length - 1] ?? "";
-    const cursorRow = Math.min(rows - 1, promptBottom);
+    const cursorRow = Math.min(rows - 1, promptBottom3);
     const cursorCol = Math.min(Math.max(0, cols - 1), 2 + vlen(lastVisibleLine));
     if (!returnToScrollArea) {
       write(ansi.moveTo(cursorRow, 0) + ansi.moveRight(cursorCol));
@@ -366,7 +402,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       write(ansi.moveTo(scrollRegionBottom(), 0));
     }
     state.inputBoxDrawn = true;
-    state.inputBoxTopRow = Math.max(0, promptBottom - state.inputBoxHeight + 1);
+    state.inputBoxTopRow = Math.max(0, promptBottom3 - state.inputBoxHeight + 1);
   };
 
   // ── Status bar deps (closure-scoped functions used by status-bar.ts) ──
@@ -876,6 +912,23 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         return;
       }
 
+      if (toolName === "expand_approval") {
+        if (!streamOpened) {
+          beginOutputBlock();
+          write(color.red("chitu: "));
+          streamOpened = true;
+          state.printingAssistant = true;
+        }
+        try {
+          const data = JSON.parse(sanitized);
+          state.expandApproval = { paths: data.paths ?? [], reason: data.reason ?? "", selectedIndex: 0 };
+          write("\n" + color.brightYellow("⚠ 边界扩展需要确认 — ") + color.brightWhite(`AI 想修改 ${(data.paths as string[]).length} 个额外文件`) + "\n");
+          write(color.dim(`  文件: ${(data.paths as string[]).join(", ")}`) + "\n");
+          write(color.dim(`  原因: ${data.reason ?? ""}`) + "\n\n");
+        } catch { /* ignore parse errors */ }
+        return;
+      }
+
       if (toolName === "ask_user") {
         if (!streamOpened) {
           beginOutputBlock();
@@ -1087,6 +1140,23 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     }
   };
 
+  // ── Expand approval handler ──
+
+  const handleExpandSelect = (approved: boolean) => {
+    if (state.agent) {
+      state.agent.pendingExpandApproved = approved;
+    }
+    state.expandApproval = null;
+    state.inputBuffer = "";
+    state.historyIndex = -1;
+    state.historyDraft = "";
+    clearInputBox();
+    beginOutputBlock();
+    write(color.dim(approved ? "  [Approved] boundary expanded." : "  [Denied] boundary expansion rejected.") + "\n");
+    drawPrompt();
+    setImmediate(() => handleTask("continue"));
+  };
+
   // ── Input handlers ──
 
   const inputDeps: InputDeps = {
@@ -1098,6 +1168,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     handleTask,
     cycleParadigm,
     detectImages,
+    handleExpandSelect,
   };
   const inputHandlers: InputHandlers = createInputHandlers(state, inputDeps);
   const {

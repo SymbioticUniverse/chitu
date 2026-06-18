@@ -95,6 +95,7 @@ export class Agent {
   private yunchang = false;
   constraintExecutor: ConstraintExecutor | null = null;
   private pendingExpandRequest: { paths: string[]; reason: string } | null = null;
+  pendingExpandApproved: boolean | null = null;
   private _srcCountCache: { value: number; at: number } = { value: 0, at: 0 };
 
   constructor(
@@ -600,6 +601,38 @@ export class Agent {
     this.constraintExecutor = executor;
     try {
       const cp = this.loadCheckpoint();
+
+      // ── Intent detection (always, regardless of checkpoint) ──
+      // Use LLM to classify: "chat" (question/feedback/discussion) vs "task" (coding task).
+      // Chat → respond naturally, no iteration. Task → constraint workflow.
+      // Intent is persisted to .chitu/context/intent.json.
+      const lastUserMsg = [...this.messages].reverse().find((m) => m.role === "user");
+      const userText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      const userIntent = await this.classifyIntent(userText);
+
+      // Persist intent for context cache
+      try {
+        const ctxDir = path.join(this.workspaceRoot, ".chitu", "context");
+        if (!fs.existsSync(ctxDir)) fs.mkdirSync(ctxDir, { recursive: true });
+        fs.writeFileSync(path.join(ctxDir, "intent.json"), JSON.stringify({
+          type: userIntent,
+          message: userText.slice(0, 500),
+          timestamp: new Date().toISOString(),
+        }, null, 2), "utf-8");
+      } catch { /* best-effort */ }
+
+      if (userIntent === "chat") {
+        // Chat mode: respond naturally, no boundary locking, no iteration loop
+        if (cp) {
+          const sysMsg = this.messages[0];
+          this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages;
+        }
+        const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
+        if (cp) this.writeCheckpoint("chat_interrupt");
+        return result || "(response)";
+      }
+
+      // ── Task mode: full constraint workflow ──
       if (cp) { const sysMsg = this.messages[0]; this.messages = sysMsg ? [sysMsg, ...cp.messages] : cp.messages; }
       executor.setup();
 
@@ -607,9 +640,8 @@ export class Agent {
       if (this.pendingExpandRequest) {
         const pending = this.pendingExpandRequest;
         this.pendingExpandRequest = null;
-        const lastUserMsg = [...this.messages].reverse().find((m) => m.role === "user");
-        const userText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content.toLowerCase().trim() : "";
-        if (userText.startsWith("yes") || userText.startsWith("ok") || userText.startsWith("同意") || userText.startsWith("批准") || userText.startsWith("confirm") || userText.startsWith("approve")) {
+        if (this.pendingExpandApproved === true) {
+          this.pendingExpandApproved = null;
           this.guard?.expandBoundary(pending.paths, pending.reason);
           executor.recordExpand(pending.paths, pending.reason);
           this.messages.push({
@@ -617,18 +649,25 @@ export class Agent {
             content: `Boundary expanded to include: ${pending.paths.join(", ")}. Reason: ${pending.reason}. Proceed with the expanded boundary.`,
           });
         } else {
+          this.pendingExpandApproved = null;
           this.messages.push({
             role: "user",
-            content: `Boundary expansion was NOT approved by the user. Do NOT modify files outside your original boundary. Response: ${userText.slice(0, 200)}`,
+            content: `Boundary expansion was NOT approved. Do NOT modify files outside your original boundary. Respond briefly and wait for the next instruction.`,
           });
         }
       }
 
-      // Unless resuming, ask AI to describe approach before locking
+      // Unless resuming, ask AI to understand and discuss before locking
       if (!cp) {
         this.messages.push({
           role: "user",
-          content: "Before you start, briefly describe your approach in 1-2 sentences. If there are multiple valid ways to do this, use `ask_user` to let me choose. Then call `horsewhip_lock_intent` to declare your boundary.",
+          content: [
+            "Take time to understand the task first. Read the relevant files, think about what needs to change.",
+            "",
+            "If anything is unclear, ask me. If there are multiple valid approaches, use `ask_user` to let me choose.",
+            "",
+            "**Do NOT call `horsewhip_lock_intent` yet.** First describe your understanding and proposed approach. Wait for me to confirm, then proceed.",
+          ].join("\n"),
         });
       }
 
@@ -638,6 +677,8 @@ export class Agent {
       let compactRounds = 0;                  // times we've compacted on this iteration
       let lastGateFailureHash = "";           // detect staleness — same failure repeating
       let sameFailureStreak = 0;
+
+      let discussionPhase = !cp;           // first entry without checkpoint = discussion phase
 
       while (iterationCount < MAX_ITERATIONS) {
         iterationCount++;
@@ -651,6 +692,15 @@ export class Agent {
         while (gateAttempts < executor.maxAttempts) {
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
           if (signal?.aborted) { executor.rollback(); return result || "(aborted)"; }
+
+          // If AI called expand_boundary, pause for human approval (TUI shows selection dialog)
+          // Must check BEFORE iterationCompleted — expand approval takes priority over commit
+          if (executor.pendingExpand) {
+            this.pendingExpandRequest = executor.pendingExpand;
+            const pe = executor.pendingExpand;
+            onToolOutput?.("expand_approval", JSON.stringify({ paths: pe.paths, reason: pe.reason }));
+            return finalResult || "(awaiting expand approval)";
+          }
 
           if (executor.iterationCompleted) {
             iterationSucceeded = true;
@@ -666,12 +716,24 @@ export class Agent {
             break;
           }
 
-          // If AI called expand_boundary, pause for human approval
-          if (executor.pendingExpand) {
-            this.pendingExpandRequest = executor.pendingExpand;
-            const pe = executor.pendingExpand;
-            onToolOutput?.("phase", `【边界扩展需要确认 — AI 想修改 ${pe.paths.length} 个额外文件：${pe.paths.join(", ")}。原因：${pe.reason}。回复 "yes" 批准，或给其他指示。】`);
-            return finalResult || "(awaiting expand approval)";
+          // Discussion phase: AI described approach, now auto-confirm and move to execution
+          if (discussionPhase) {
+            discussionPhase = false;
+            const calledLockIntent = lastMsg?.role === "assistant" && lastMsg.tool_calls?.some((tc) =>
+              tc.function.name === "mcp__horsewhip__horsewhip_lock_intent" ||
+              tc.function.name === "horsewhip_lock_intent"
+            );
+            if (calledLockIntent) {
+              // AI jumped straight to lock_intent — let it proceed
+              // (it described in the same turn, which is acceptable)
+            } else {
+              // AI described without locking — confirm and tell it to proceed
+              this.messages.push({
+                role: "user",
+                content: "Got it. Call `horsewhip_lock_intent` to declare your boundary, then implement the changes.",
+              });
+            }
+            continue;
           }
 
           const completed = executor.ensureBoundary();
@@ -764,9 +826,22 @@ export class Agent {
         lastGateFailureHash = "";
         sameFailureStreak = 0;
 
+        // Detect completion: if AI says all done without locking new files, stop
+        const doneSignals = /(?:全部完成|所有.*完成|项目.*完结|全量交付|all\s*(?:done|complete|delivered)|no\s*more|nothing\s*(?:left|more)|已完结|静候|等待.*(?:新|下一))/i;
+        const lastAssistantMsg = [...this.messages].reverse().find((m) => m.role === "assistant");
+        const lastAssistantText = lastAssistantMsg && typeof lastAssistantMsg.content === "string" ? lastAssistantMsg.content : "";
+        const calledLockIntent = lastAssistantMsg?.tool_calls?.some((tc) =>
+          tc.function.name === "mcp__horsewhip__horsewhip_lock_intent" ||
+          tc.function.name === "horsewhip_lock_intent"
+        );
+        if (doneSignals.test(lastAssistantText) && !calledLockIntent && !executor.iterationCompleted) {
+          onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，AI 报告任务已全部交付】`);
+          return finalResult || "(task complete)";
+        }
+
         this.messages.push({
           role: "user",
-          content: `${finalResult}\n\nContinue with the next sub-goal. If all tasks are complete, reply with a brief summary (do NOT call \`complete_sub_goal\`).`,
+          content: `${finalResult}\n\nIf there are more sub-goals, continue. If all tasks are complete, reply with a brief summary — do NOT call \`complete_sub_goal\` and do NOT loop.`,
         });
       }
       onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，所有 sub-goal 已处理】`);
@@ -901,4 +976,43 @@ export class Agent {
     this.onCompress?.("done", 100);
     await yield_();
   }
+
+  /** Use LLM to classify user intent: "chat" (respond naturally) or "task" (constraint workflow). */
+  private async classifyIntent(text: string): Promise<"chat" | "task"> {
+    if (!text.trim()) return "task";
+    try {
+      const result = await this.provider.chat({
+        model: this.model,
+        messages: [
+          { role: "system", content: INTENT_CLASSIFY_PROMPT },
+          { role: "user", content: text.slice(0, 1000) },
+        ],
+        max_tokens: 10,
+      });
+      const label = (result.choices[0]?.message?.content ?? "").trim().toLowerCase();
+      if (label.includes("chat")) return "chat";
+      return "task";
+    } catch {
+      return "task"; // fail safe: if LLM call fails, treat as task
+    }
+  }
 }
+
+// ── Intent classifier for constraint mode ──
+
+const INTENT_CLASSIFY_PROMPT = [
+  "You are an intent classifier for a constraint-mode AI agent.",
+  "Classify the user's message as exactly one word:",
+  "- `chat` — the user is asking a question, giving feedback, discussing, chatting, or questioning previous work. They do NOT want autonomous iteration.",
+  "- `task` — the user is giving a coding task, telling the AI to continue, confirming a plan, or requesting implementation work.",
+  "",
+  "Rules:",
+  "- Questions about WHY something was done → chat",
+  "- Feedback like \"wrong\", \"don't do that\" → chat",
+  "- Commands starting with /help, /session, etc. → chat",
+  "- \"Continue\", \"go ahead\", \"ok\", \"proceed\" → task",
+  "- Descriptions of work to be done → task",
+  "- If the user seems to want a conversation, not autonomous execution → chat",
+  "",
+  "Reply with ONLY one word: `chat` or `task`.",
+].join("\n");

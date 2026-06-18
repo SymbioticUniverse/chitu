@@ -34,6 +34,7 @@ export interface InputDeps {
   handleTask: (task: string) => void;
   cycleParadigm: () => void;
   detectImages: (task: string) => { cleanText: string; imagePaths: string[] };
+  handleExpandSelect: (approved: boolean) => void;
 }
 
 // ── Handler collection ──
@@ -243,6 +244,39 @@ export function createInputHandlers(
   // ── Raw input consumer (state machine) ──
 
   const consumeRawInput = () => {
+    // Expand approval selection mode — intercept arrow keys + enter
+    if (state.expandApproval) {
+      while (state.pendingRawInput.length > 0) {
+        if (state.pendingRawInput.startsWith("\x1b[A")) {
+          state.pendingRawInput = state.pendingRawInput.slice(3);
+          state.expandApproval.selectedIndex = 0;
+          deps.drawPrompt();
+          continue;
+        }
+        if (state.pendingRawInput.startsWith("\x1b[B")) {
+          state.pendingRawInput = state.pendingRawInput.slice(3);
+          state.expandApproval.selectedIndex = 1;
+          deps.drawPrompt();
+          continue;
+        }
+        if (state.pendingRawInput[0] === "\r" || state.pendingRawInput[0] === "\n") {
+          state.pendingRawInput = state.pendingRawInput.slice(state.pendingRawInput[1] === "\n" ? 2 : 1);
+          const approved = state.expandApproval.selectedIndex === 0;
+          deps.handleExpandSelect(approved);
+          return;
+        }
+        if (state.pendingRawInput[0] === "\x03" || state.pendingRawInput[0] === "\x1b") {
+          state.pendingRawInput = state.pendingRawInput.slice(1);
+          deps.handleExpandSelect(false);
+          return;
+        }
+        // Discard other input while in selection mode
+        const cp = state.pendingRawInput.codePointAt(0)!;
+        state.pendingRawInput = state.pendingRawInput.slice(cp > 0xFFFF ? 2 : 1);
+      }
+      return;
+    }
+
     while (state.pendingRawInput.length > 0) {
       if (state.inBracketedPaste) {
         const end = state.pendingRawInput.indexOf(BRACKETED_PASTE_END);

@@ -141,6 +141,9 @@ export interface TUIState {
   autoContinueCount: number;
   messageQueue: string[];
 
+  // expand approval
+  expandApproval: { paths: string[]; reason: string; selectedIndex: number } | null;
+
   // config flags
   skipGuard: boolean;
   dev: boolean;
@@ -235,6 +238,8 @@ export function createTUIState(
     pendingImages: [],
     autoContinueCount: 0,
     messageQueue: [],
+
+    expandApproval: null,
 
     skipGuard: config.skipGuard ?? false,
     dev: config.dev ?? false,
