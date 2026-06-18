@@ -622,6 +622,7 @@ export class Agent {
         let iterationSucceeded = false;
         let aiAskedUser = false;
         let gateAttempts = 0;
+        let stillWorkingRounds = 0;          // consecutive "still working" rounds without gate attempt
 
         // Inner loop: keep running until sub-goal done, user input needed, or gates exhaust retries.
         // "Still working" (no complete_sub_goal yet) does NOT consume a gate attempt.
@@ -645,6 +646,12 @@ export class Agent {
 
           const completed = executor.ensureBoundary();
           if (!completed) {
+            stillWorkingRounds++;
+            if (stillWorkingRounds >= 5) {
+              // AI has responded 5 times without calling complete_sub_goal — likely stuck or chatting
+              onToolOutput?.("phase", `【约束模式暂停 — AI 已连续 ${stillWorkingRounds} 轮未调用 complete_sub_goal，可能需要更明确的指示。请回复继续。】`);
+              return finalResult || "(awaiting direction)";
+            }
             // AI still working — nudge to call complete_sub_goal when ready
             this.messages.push({
               role: "user",
@@ -652,6 +659,7 @@ export class Agent {
             });
             continue;
           }
+          stillWorkingRounds = 0; // reset — AI called complete_sub_goal
           if (completed.feedback) { this.messages.push({ role: "user", content: completed.feedback }); continue; }
 
           const gates = executor.verifyGates(completed.exports, completed.imports);

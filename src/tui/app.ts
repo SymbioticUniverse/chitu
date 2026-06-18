@@ -941,8 +941,8 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         } catch { /* best-effort */ }
         // Show visible warning in TUI
         if (!streamOpened) { beginOutputBlock(); streamOpened = true; state.printingAssistant = true; }
-        write("\n" + color.brightRed("⚠ 已 60 秒无工具调用，AI 可能卡住或正在等待你的输入。") + "\n");
-        write(color.dim("  键入 /quit 退出，或输入内容继续。") + "\n\n");
+        write("\n" + color.brightRed("⚠ 已 60 秒无工具调用，AI 可能卡住了。") + "\n");
+        write(color.dim("  按 ESC 或 Ctrl+C 可中断当前任务，然后输入新指令。") + "\n\n");
       }, WATCHDOG_IDLE_MS);
     };
     resetWatchdog();

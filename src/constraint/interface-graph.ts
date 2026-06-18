@@ -32,7 +32,7 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "5. **Work** within the boundary. Import from existing modules via their documented interfaces. If the sub-goal requires deleting files, include them in the boundary declaration too.",
   "",
-  "6. **Do NOT use `ask_user`**. Constraint mode must be autonomous. If a file is blocked: put that task aside, complete what you can, call `complete_sub_goal`, and handle the blocked file in the next iteration.",
+  "6. **Use `ask_user` for decisions**: If there are multiple valid approaches, use `ask_user` to let the user choose. Do NOT pick one yourself. If a file is blocked: put that task aside, complete what you can, call `complete_sub_goal`, and handle the blocked file in the next iteration.",
   "",
   "7. **Complete**: Call `complete_sub_goal` with this iteration's exports and imports.",
   "",
