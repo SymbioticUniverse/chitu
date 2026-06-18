@@ -979,7 +979,7 @@ export class Agent {
 
   /** Use LLM to classify user intent: "chat" (respond naturally) or "task" (constraint workflow). */
   private async classifyIntent(text: string): Promise<"chat" | "task"> {
-    if (!text.trim()) return "task";
+    if (!text.trim()) return "chat"; // empty message → chat
     try {
       const result = await this.provider.chat({
         model: this.model,
@@ -987,13 +987,16 @@ export class Agent {
           { role: "system", content: INTENT_CLASSIFY_PROMPT },
           { role: "user", content: text.slice(0, 1000) },
         ],
-        max_tokens: 10,
+        max_tokens: 20,
       });
       const label = (result.choices[0]?.message?.content ?? "").trim().toLowerCase();
-      if (label.includes("chat")) return "chat";
-      return "task";
+      // Match both English and Chinese responses
+      if (/chat|聊天|对话|提问|问题|讨论|问答|咨询/i.test(label)) return "chat";
+      if (/task|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
+      // Ambiguous: default to chat (safer — AI responds instead of iterating)
+      return "chat";
     } catch {
-      return "task"; // fail safe: if LLM call fails, treat as task
+      return "chat"; // fail safe: if LLM call fails, chat (AI responds naturally)
     }
   }
 }
@@ -1001,18 +1004,21 @@ export class Agent {
 // ── Intent classifier for constraint mode ──
 
 const INTENT_CLASSIFY_PROMPT = [
-  "You are an intent classifier for a constraint-mode AI agent.",
-  "Classify the user's message as exactly one word:",
-  "- `chat` — the user is asking a question, giving feedback, discussing, chatting, or questioning previous work. They do NOT want autonomous iteration.",
-  "- `task` — the user is giving a coding task, telling the AI to continue, confirming a plan, or requesting implementation work.",
+  "Classify the user message as `chat` or `task`.",
   "",
-  "Rules:",
-  "- Questions about WHY something was done → chat",
-  "- Feedback like \"wrong\", \"don't do that\" → chat",
-  "- Commands starting with /help, /session, etc. → chat",
-  "- \"Continue\", \"go ahead\", \"ok\", \"proceed\" → task",
-  "- Descriptions of work to be done → task",
-  "- If the user seems to want a conversation, not autonomous execution → chat",
+  "`chat` = the user is TALKING to you, not asking for code work:",
+  "  - Questions: 能听明白吗？这是什么？为什么改了？怎么做？what? why? how?",
+  "  - Feedback: 不对、错了、别这样、wrong、don't do that",
+  "  - Conversation: 你好、在吗、OK我知道了、got it",
+  "  - Commands: /help /quit /session /model",
+  "  - Any message that wants a REPLY, not autonomous iteration",
   "",
-  "Reply with ONLY one word: `chat` or `task`.",
+  "`task` = the user wants you to DO coding work:",
+  "  - Continue: go ahead、继续、proceed、ok start、好的开始",
+  "  - Task description: 创建一个API、修复bug、添加功能、build X、fix Y",
+  "  - Mentioning files: src/foo.ts、api.py",
+  "  - Plan confirmation AFTER user was asked: yes、行、可以",
+  "",
+  "Key rule: when in doubt, answer `chat`. Only answer `task` if the user clearly wants autonomous coding work.",
+  "Reply with exactly one word: `chat` or `task`.",
 ].join("\n");
