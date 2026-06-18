@@ -977,47 +977,12 @@ export class Agent {
     await yield_();
   }
 
-  /**
-   * Check if the message contains clear signals that the user wants autonomous coding work.
-   * If there's no task signal, we skip the LLM entirely and treat it as chat.
-   * Only ambiguous-but-possibly-task messages reach the LLM for a second opinion.
-   */
-  private hasTaskSignals(text: string): boolean {
-    const t = text.trim();
-    if (!t) return false;
-
-    // Continuation / explicit go-ahead
-    if (/^(继续|go\s*ahead|proceed|ok\s*start|开始吧|开工|干活)\b/i.test(t)) return true;
-
-    // Chinese action verbs — user wants something done
-    if (/创建|修复|实现|添加|删除|重构|优化|设计|开发|搭建|配置|部署|修改|更新|升级|迁移|测试|调试|构建|编译|打包|发布|回滚|合并|拆分|提取|封装|抽象|简化|生成|转换|导入|导出|加密|解密|压缩|解压|验证|检查|审计|扫描|分析|监控|同步|缓存|清理|重置|恢复|替换|重命名|移动|复制|备份|安装|卸载/.test(t)) return true;
-
-    // English action verbs
-    if (/\b(create|fix|implement|add|remove|delete|refactor|optimize|design|develop|build|configure|deploy|modify|update|upgrade|migrate|test|debug|compile|publish|rollback|merge|split|extract|encapsulate|generate|convert|import|export|verify|check|audit|scan|analyze|monitor|sync|cache|clean|reset|restore|replace|rename|move|copy|backup|install|uninstall)\b/i.test(t)) return true;
-
-    // File path pattern (e.g. src/foo.ts, api.py, components/Button.jsx)
-    if (/[a-zA-Z0-9_/\\]+\.[a-zA-Z]{1,6}\b/.test(t)) return true;
-
-    // Code / technical terms that suggest a coding task
-    if (/\b(api|bug|feature|function|class|interface|type|module|component|endpoint|route|handler|middleware|service|controller|model|schema|query|mutation|endpoint|database|table|column|index|server|client|request|response|error|exception|crash|break|fail|broken|doesn'?t\s*work|not\s*working)\b/i.test(t)) return true;
-    if (/\b(接口|功能|函数|类|模块|组件|端点|路由|服务|控制器|模型|数据库|表|字段|查询|服务器|客户端|请求|响应|错误|异常|崩溃|报错|不工作|坏了)\b/.test(t)) return true;
-
-    return false;
-  }
-
   /** Use LLM to classify user intent: "chat" (respond naturally) or "task" (constraint workflow). */
   private async classifyIntent(text: string): Promise<"chat" | "task"> {
     const t = text.trim();
     if (!t) return "chat";
-
-    // /commands → always chat
     if (/^\/\w+/.test(t)) return "chat";
 
-    // No task signals → chat (skip LLM entirely — safe default)
-    if (!this.hasTaskSignals(t)) return "chat";
-
-    // Has task signals → ask LLM for a second opinion
-    // (prevents false positives like "能帮我看看这个bug吗" → actually asking, not tasking)
     try {
       const result = await this.provider.chat({
         model: this.model,
@@ -1025,11 +990,12 @@ export class Agent {
           { role: "system", content: INTENT_CLASSIFY_PROMPT },
           { role: "user", content: t.slice(0, 1000) },
         ],
-        max_tokens: 20,
+        max_tokens: 10,
+        temperature: 0,
       });
       const label = (result.choices[0]?.message?.content ?? "").trim().toLowerCase();
-      if (/chat|聊天|对话|提问|问题|讨论|问答|咨询/i.test(label)) return "chat";
-      if (/task|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
+      if (/\bchat\b|聊天|对话|提问|问题|讨论|问答|咨询|闲聊/i.test(label)) return "chat";
+      if (/\btask\b|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
       return "chat";
     } catch {
       return "chat";
@@ -1040,21 +1006,30 @@ export class Agent {
 // ── Intent classifier for constraint mode ──
 
 const INTENT_CLASSIFY_PROMPT = [
-  "Classify the user message as `chat` or `task`.",
+  "Classify user messages. Reply with EXACTLY ONE word: `chat` or `task`.",
   "",
-  "`chat` = the user is TALKING to you, not asking for code work:",
-  "  - Questions: 能听明白吗？这是什么？为什么改了？怎么做？what? why? how?",
-  "  - Feedback: 不对、错了、别这样、wrong、don't do that",
-  "  - Conversation: 你好、在吗、OK我知道了、got it",
-  "  - Commands: /help /quit /session /model",
-  "  - Any message that wants a REPLY, not autonomous iteration",
+  "`chat` — the user is conversing: asking a question, giving feedback, greeting, or just talking.",
+  "`task` — the user wants autonomous coding work: a coding instruction, continuation signal, or work request.",
   "",
-  "`task` = the user wants you to DO coding work:",
-  "  - Continue: go ahead、继续、proceed、ok start、好的开始",
-  "  - Task description: 创建一个API、修复bug、添加功能、build X、fix Y",
-  "  - Mentioning files: src/foo.ts、api.py",
-  "  - Plan confirmation AFTER user was asked: yes、行、可以",
+  "Examples:",
+  "能听明白我说话了吗 → chat",
+  "能听到了吗 → chat",
+  "chitu → chat",
+  "你好 → chat",
+  "在吗 → chat",
+  "答非所问 → chat",
+  "莫名其妙 → chat",
+  "这个是怎么实现的 → chat",
+  "为什么改了那个文件 → chat",
+  "感觉不太对 → chat",
   "",
-  "Key rule: when in doubt, answer `chat`. Only answer `task` if the user clearly wants autonomous coding work.",
-  "Reply with exactly one word: `chat` or `task`.",
+  "继续 → task",
+  "帮我创建一个用户API → task",
+  "修复login的bug → task",
+  "重构src/agent.ts → task",
+  "添加表单验证 → task",
+  "build the auth module → task",
+  "go ahead → task",
+  "",
+  "If the user is just talking to you, say `chat`. Only say `task` when they clearly want code work done.",
 ].join("\n");
