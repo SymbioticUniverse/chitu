@@ -75,12 +75,30 @@ export function verifyGates(
     };
   }
 
-  // Gate 2: tests
+  // Gate 2: TypeScript compilation
+  const tscResult = runTscCheck(workspaceRoot, realChanges);
+  if (!tscResult.ok) {
+    return {
+      ok: false,
+      feedback: `## TypeScript compilation failed\n${tscResult.output.slice(0, 2000)}\nFix the type errors above, then call \`complete_sub_goal\` again.`,
+    };
+  }
+
+  // Gate 3: tests
   const testResult = runTests(workspaceRoot);
   if (!testResult.ok) {
     return {
       ok: false,
       feedback: `## Tests failed\n${testResult.output.slice(0, 2000)}\nFix the tests, then call \`complete_sub_goal\` again.`,
+    };
+  }
+
+  // Gate 4: self-review
+  const reviewResult = checkSelfReview(workspaceRoot);
+  if (!reviewResult.ok) {
+    return {
+      ok: false,
+      feedback: `## Self-review missing\n${reviewResult.output}\nBefore calling \`complete_sub_goal\`, write your code review to \`.chitu/plans/current/review.md\`. Review each changed file for logic correctness, null/undefined safety, edge cases, and similar issues in nearby code.`,
     };
   }
 
@@ -236,6 +254,45 @@ function runTests(workspaceRoot: string): { ok: boolean; output: string } {
 
   // Unknown language — skip tests, don't block
   return { ok: true, output: "Unknown project type — skipping tests" };
+}
+
+function runTscCheck(workspaceRoot: string, changedFiles: string[]): { ok: boolean; output: string } {
+  // Only run if changed files include TypeScript and tsconfig exists
+  const hasTsChanges = changedFiles.some((f) => /\.(ts|tsx)$/.test(f));
+  if (!hasTsChanges) return { ok: true, output: "No TypeScript files changed — skipping tsc" };
+
+  const tsconfigPath = path.join(workspaceRoot, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) return { ok: true, output: "No tsconfig.json — skipping tsc" };
+
+  try {
+    const result = execSync("npx tsc --noEmit 2>&1 || true", {
+      cwd: workspaceRoot, encoding: "utf-8", maxBuffer: 5 * 1024 * 1024, timeout: 60_000,
+    });
+    // Filter out "watching" noise, keep actual errors
+    const errors = result.split("\n").filter((line) =>
+      line.includes("error TS") || line.includes(": error ") || line.includes(":  error ")
+    );
+    if (errors.length === 0) return { ok: true, output: "tsc: no errors" };
+    return { ok: false, output: `${errors.length} type error(s):\n${errors.slice(0, 20).join("\n")}` };
+  } catch (e: any) {
+    return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
+  }
+}
+
+function checkSelfReview(workspaceRoot: string): { ok: boolean; output: string } {
+  const reviewPath = path.join(workspaceRoot, ".chitu", "plans", "current", "review.md");
+  if (!fs.existsSync(reviewPath)) {
+    return { ok: false, output: "No review file found at `.chitu/plans/current/review.md`. Write a brief self-review before completing." };
+  }
+  try {
+    const content = fs.readFileSync(reviewPath, "utf-8").trim();
+    if (content.length < 50) {
+      return { ok: false, output: "Review file exists but is too short (< 50 chars). Write a meaningful review covering logic, null safety, and edge cases." };
+    }
+    return { ok: true, output: "" };
+  } catch {
+    return { ok: false, output: "Cannot read review file." };
+  }
 }
 
 /** Verify expand reasons against actual interface changes. Returns score delta and labels. */
