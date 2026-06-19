@@ -12,6 +12,7 @@ import {
   verifyExpandReasons,
   snapshotExportState,
   type ExpandReasonEntry,
+  type GateResult,
 } from "./gates.js";
 import type { ConstraintMode } from "../types.js";
 import {
@@ -71,7 +72,8 @@ export class ConstraintExecutor {
   private contextInjected = false;
   private planPath = "";
   private attempts = 0;
-  readonly maxAttempts = 3;
+  maxAttempts = 3;
+  completedIterations = 0;
   private headCommit = "";
   private originalSystemPrompt = "";
   private userGoal = "";
@@ -79,6 +81,8 @@ export class ConstraintExecutor {
   iterationCompleted = false;
   /** Pending boundary expand awaiting user approval */
   pendingExpand: { paths: string[]; reason: string } | null = null;
+  /** Gate result from run() interception — prevents double-verification in executeConstraint */
+  lastGateResult: GateResult | null = null;
 
   constructor(agent: Agent, workspaceRoot: string, mode: ConstraintMode = "creation") {
     this.agent = agent;
@@ -123,6 +127,7 @@ export class ConstraintExecutor {
     this.planPath = "";
     this.attempts = 0;
     this.iterationCompleted = false;
+    this.lastGateResult = null;
     this.headCommit = "";
     try {
       this.headCommit = execSync("git rev-parse HEAD", {
@@ -141,6 +146,8 @@ export class ConstraintExecutor {
     this.planPath = "";
     this.attempts = 0;
     this.headCommit = "";
+    this.completedIterations = 0;
+    this.maxAttempts = 3;
   }
 
   retryIteration(): void {
@@ -208,6 +215,7 @@ export class ConstraintExecutor {
   }
 
   finalize(capability: string): string {
+    this.completedIterations++;
     const hints: Record<string, string> = {};
     for (const f of this.targetFiles) hints[f] = capability;
     updateInterfacesAfterIteration(this.workspaceRoot, this.targetFiles, hints);

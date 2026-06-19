@@ -97,35 +97,29 @@ export function buildUserContent(
 
 // ── Context usage ──
 
-export function getContextUsage(messages: Message[]): { estimatedTokens: number; maxTokens: number; percentage: number } {
-  let totalChars = 0;
+/** Estimate token count for a set of messages using CJK-aware estimation. */
+export function estimateContextTokens(messages: Message[]): number {
+  let tokens = 0;
   for (const m of messages) {
-    totalChars += (m.content?.length ?? 0) + 200;
+    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+    tokens += estimateTokens(content);
+    tokens += 40; // overhead per message: role marker, formatting tokens
     if (m.tool_calls) {
       for (const tc of m.tool_calls) {
-        totalChars += tc.function?.arguments?.length ?? 0;
+        tokens += estimateTokens(tc.function?.arguments ?? "");
       }
     }
   }
-  const estimatedTokens = Math.ceil(totalChars / 4);
+  return tokens;
+}
+
+export function getContextUsage(messages: Message[]): { estimatedTokens: number; maxTokens: number; percentage: number } {
+  const estimatedTokens = estimateContextTokens(messages);
   return {
     estimatedTokens,
     maxTokens: MAX_CONTEXT_TOKENS,
     percentage: Math.round((estimatedTokens / MAX_CONTEXT_TOKENS) * 100),
   };
-}
-
-export function getContextCharCount(messages: Message[]): number {
-  let totalChars = 0;
-  for (const m of messages) {
-    totalChars += (m.content?.length ?? 0) + 200;
-    if (m.tool_calls) {
-      for (const tc of m.tool_calls) {
-        totalChars += tc.function?.arguments?.length ?? 0;
-      }
-    }
-  }
-  return totalChars;
 }
 
 // ── Checkpoint management ──

@@ -120,11 +120,6 @@ export function loadSystemPrompt(workspaceRoot?: string): string {
   }
 }
 
-/** Estimate token count from text (char/4). Used for baseline calculation. */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
 /** Fallback: try base64-encoded prompt for backward compat, or use hardcoded fallback */
 function loadDevFallback(): string {
   try {

@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { createProvider } from "./providers/factory.js";
 import type { AIProvider, ProviderName } from "./providers/types.js";
 import { getAllToolDefs, getAllToolHandlers } from "./tools/index.js";
@@ -38,7 +39,7 @@ import {
   PATH_RE,
   estimateTokens,
   getContextUsage as getContextUsageFn,
-  getContextCharCount,
+  estimateContextTokens,
   writeCheckpoint as writeCp,
   loadCheckpoint as loadCp,
   deleteCheckpoint as deleteCp,
@@ -117,7 +118,7 @@ export class Agent {
       reasoningEffort: config.reasoningEffort,
     });
     this.model = config.model ?? this.provider.defaultModels[0] ?? "deepseek-v4-pro";
-    this.maxIterations = config.maxIterations ?? 50;
+    this.maxIterations = config.maxIterations ?? 100; // safety net; idle detection is the primary control
     this.explicitThinking = config.thinking;
     this.paradigm = config.paradigm ?? "constraint";
     this.paradigmState = { active: this.paradigm, resolved: this.paradigm };
@@ -173,7 +174,7 @@ export class Agent {
       promptTokens: Math.max(0, this.lastUsage.promptTokens - b),
       completionTokens: this.lastUsage.completionTokens,
       totalTokens: Math.max(0, this.lastUsage.totalTokens - b),
-      cachedTokens: Math.max(0, this.lastUsage.cachedTokens - b),
+      cachedTokens: this.lastUsage.cachedTokens,
     };
   }
 
@@ -329,10 +330,24 @@ export class Agent {
     let iterations = 0;
     let consecutiveTimeouts = 0;
     let emptyResponseCount = 0;
+    let idleRounds = 0;                       // consecutive rounds with only read-only tools
+    const MAX_IDLE_ROUNDS = 6;
     const ROUND_TIMEOUT_MS = 300_000;
     const MAX_TIMEOUTS = 3;
+    const READ_ONLY_TOOLS = new Set([
+      "Read", "WebFetch", "WebSearch", "AskUserQuestion",
+      "report_progress", "TaskList", "TaskGet",
+      "LSP", "horsewhip_get_boundary", "horsewhip_suggest_scope",
+    ]);
+    const isReadOnlyTool = (name: string): boolean => {
+      if (READ_ONLY_TOOLS.has(name)) return true;
+      // Handle MCP-prefixed names like mcp__horsewhip__horsewhip_get_boundary
+      const lastSep = name.lastIndexOf("__");
+      return lastSep >= 0 && READ_ONLY_TOOLS.has(name.slice(lastSep + 2));
+    };
+    const hardCap = this.maxIterations > 0 ? this.maxIterations : Infinity;
 
-    while (iterations < this.maxIterations) {
+    while (iterations < hardCap) {
       if (signal?.aborted) { finalResponse = finalResponse || "(aborted)"; break; }
       iterations++;
       await this.maybeCompress();
@@ -388,6 +403,7 @@ export class Agent {
             const completed = this.constraintExecutor.ensureBoundary();
             if (completed && !completed.feedback) {
               const gates = this.constraintExecutor.verifyGates(completed.exports, completed.imports);
+              this.constraintExecutor.lastGateResult = gates;
               toolResults[i] = gates.ok
                 ? { tool_call_id: tc.id, content: JSON.stringify({ ok: true, gate_verified: true, result: this.constraintExecutor.finalize(completed.capability) }) }
                 : { tool_call_id: tc.id, content: JSON.stringify({ ok: false, error: gates.feedback }) };
@@ -412,6 +428,20 @@ export class Agent {
 
       for (const tr of toolResults) this.messages.push({ role: "tool", content: tr.content, tool_call_id: tr.tool_call_id });
       if (result.content) finalResponse = result.content;
+
+      // Idle detection: if all tool calls were read-only, count toward idle limit
+      if (result.toolCalls.length > 0 && result.toolCalls.every((tc) => isReadOnlyTool(tc.function.name))) {
+        idleRounds++;
+        if (idleRounds >= MAX_IDLE_ROUNDS) {
+          this.messages.push({
+            role: "user",
+            content: `(You have been reading files for ${idleRounds} consecutive rounds without making any changes. If you are done, just respond without tool calls. If not, take action — edit, write, or run commands — instead of just reading.)`,
+          });
+          idleRounds = 0;
+        }
+      } else {
+        idleRounds = 0;
+      }
 
       if (SoulManager.shouldAutoSummarize(++this.soulRoundCounter)) {
         await this.maybeUpdateSoul();
@@ -711,6 +741,11 @@ export class Agent {
         let gateAttempts = 0;
         let stillWorkingRounds = 0;          // consecutive "still working" rounds without gate attempt
 
+        // Dynamic limits: tighten as more sub-goals complete
+        executor.maxAttempts = executor.completedIterations < 2 ? 3 : 2;
+        const maxCompactRounds = executor.completedIterations < 2 ? 3 :
+                                  executor.completedIterations < 5 ? 2 : 1;
+
         // Inner loop: keep running until sub-goal done, user input needed, or gates exhaust retries.
         // "Still working" (no complete_sub_goal yet) does NOT consume a gate attempt.
         while (gateAttempts < executor.maxAttempts) {
@@ -757,6 +792,43 @@ export class Agent {
             continue;
           }
 
+          // If run() already verified gates (via complete_sub_goal interception), use that result.
+          // This avoids double-verification: once in run() and once here.
+          const preGates = executor.lastGateResult;
+          executor.lastGateResult = null;
+
+          if (preGates) {
+            stillWorkingRounds = 0;
+            if (preGates.ok) {
+              // finalize() was already called in run() interception
+              if (executor.iterationCompleted) {
+                iterationSucceeded = true;
+                finalResult = result;
+                break;
+              }
+              // iterationCompleted should be true; if not, finalize here
+              const completed = executor.ensureBoundary();
+              if (completed && !completed.feedback) {
+                const final = executor.finalize(completed.capability);
+                this.deleteCheckpoint();
+                iterationSucceeded = true;
+                finalResult = `${result}\n\n${final}`;
+                break;
+              }
+            }
+            // Gate failure — already reported as tool result, just track it
+            gateAttempts++;
+            const failureSig = preGates.feedback.split("\n")[0]?.replace(/`[^`]*`/g, "_").trim() ?? "";
+            if (failureSig === lastGateFailureHash) {
+              sameFailureStreak++;
+            } else {
+              lastGateFailureHash = failureSig;
+              sameFailureStreak = 0;
+            }
+            gateFailures.push(preGates.feedback);
+            continue;
+          }
+
           const completed = executor.ensureBoundary();
           if (!completed) {
             stillWorkingRounds++;
@@ -768,13 +840,14 @@ export class Agent {
             // AI still working — nudge to call complete_sub_goal when ready
             this.messages.push({
               role: "user",
-              content: "You have not called `complete_sub_goal` yet. If this sub-goal is done, call `complete_sub_goal` with your exports/imports. Otherwise continue working.",
+              content: "You have not called `complete_sub_goal` yet. Call `complete_sub_goal` with your exports/imports to trigger git commit and save your work. Otherwise continue working.",
             });
             continue;
           }
           stillWorkingRounds = 0; // reset — AI called complete_sub_goal
           if (completed.feedback) { this.messages.push({ role: "user", content: completed.feedback }); continue; }
 
+          // Fallback: gates not pre-verified in run() interception (shouldn't normally happen)
           const gates = executor.verifyGates(completed.exports, completed.imports);
           if (gates.ok) {
             const final = executor.finalize(completed.capability);
@@ -806,21 +879,34 @@ export class Agent {
           onToolOutput?.("phase", `【约束模式暂停 — AI 需要你的输入，请在下方回复后继续】`);
           return finalResult || "(awaiting input)";
         }
-        // Bail on consecutive identical gate failures — AI is stuck
+        // Bail on consecutive identical gate failures — AI is stuck.
+        // But if files actually changed (git diff non-empty), AI is trying different approaches — reset streak.
         if (sameFailureStreak >= 2) {
-          const doneCount = iterationCount - 1;
-          const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
-          onToolOutput?.("phase", `【约束模式暂停 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，AI 未做出有效修改。请给出更明确的指示后继续。】${doneNote}`);
-          executor.rollback();
-          return finalResult || "(task incomplete)";
+          let hasChanges = false;
+          try {
+            const diffOut = execSync("git diff HEAD --name-only 2>/dev/null", {
+              cwd: this.workspaceRoot, encoding: "utf-8", timeout: 5000,
+            }).trim();
+            hasChanges = diffOut.length > 0;
+          } catch { /* can't check, proceed with bail */ }
+          if (hasChanges) {
+            sameFailureStreak = 0;
+            lastGateFailureHash = "";
+          } else {
+            const doneCount = iterationCount - 1;
+            const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
+            onToolOutput?.("phase", `【约束模式暂停 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，AI 未做出有效修改。请给出更明确的指示后继续。】${doneNote}`);
+            executor.rollback();
+            return finalResult || "(task incomplete)";
+          }
         }
         if (!iterationSucceeded) {
           compactRounds++;
-          if (compactRounds >= 3) {
-            // 3 compaction rounds × 3 attempts = 9 total tries — truly give up
+          if (compactRounds >= maxCompactRounds) {
+            // Dynamic: early sub-goals get more retries, later sub-goals fewer
             const doneCount = iterationCount - 1;
             const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
-            onToolOutput?.("phase", `【约束模式失败 — 第 ${iterationCount} 轮迭代 9 次尝试未通过 gates 验证，已尽最大努力】${doneNote}`);
+            onToolOutput?.("phase", `【约束模式失败 — 第 ${iterationCount} 轮迭代 ${maxCompactRounds * executor.maxAttempts} 次尝试未通过 gates 验证，已尽最大努力】${doneNote}`);
             executor.rollback();
             return finalResult || "(task incomplete)";
           }
@@ -925,8 +1011,7 @@ export class Agent {
   private compressRound = 0;
 
   private async maybeCompress(): Promise<void> {
-    const totalChars = getContextCharCount(this.messages);
-    const estimatedTokens = Math.ceil(totalChars / 4);
+    const estimatedTokens = estimateContextTokens(this.messages);
     if (estimatedTokens < MAX_CONTEXT_TOKENS * COMPRESS_THRESHOLD) return;
 
     const yield_ = () => new Promise<void>((r) => setImmediate(r));

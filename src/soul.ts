@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { estimateTokens } from "./agent/context.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -84,9 +85,9 @@ export class SoulManager {
     writeFileSync(SOUL_FILE, file + "\n", "utf-8");
   }
 
-  /** Rough token estimate: characters / 4 (same as agent context estimation) */
+  /** CJK-aware token estimation (delegates to agent/context). */
   static estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
+    return estimateTokens(text);
   }
 
   /** Build a system prompt fragment from the soul file */
