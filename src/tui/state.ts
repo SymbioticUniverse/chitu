@@ -18,7 +18,7 @@ export const IMAGE_EXTS = /\.(png|jpg|jpeg|gif|webp|bmp)$/i;
 export const BRACKETED_PASTE_START = "\x1b[200~";
 export const BRACKETED_PASTE_END = "\x1b[201~";
 
-export const WATCHDOG_IDLE_MS = 300_000; // 5 min — must exceed STREAM_IDLE_TIMEOUT_MS (240s) so stream dies first and retries naturally; watchdog is last resort
+export const WATCHDOG_IDLE_MS = 660_000; // 11 min — must exceed STREAM_IDLE_TIMEOUT_MS (600s) so stream timeout fires first; watchdog is last resort
 
 export type HintItem = { name: string; description: string };
 

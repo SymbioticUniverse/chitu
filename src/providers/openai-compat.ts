@@ -196,7 +196,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
 
     const decoder = new TextDecoder();
     let buffer = "";
-    const STREAM_IDLE_TIMEOUT_MS = 240_000; // 4 min — DeepSeek thinking can pause >60s between SSE events
+    const STREAM_IDLE_TIMEOUT_MS = 600_000; // 10 min — DeepSeek can pause several minutes mid-response during deep reasoning
     let lastDataAt = Date.now();
 
     const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
