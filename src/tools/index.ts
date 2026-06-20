@@ -469,15 +469,16 @@ function interfaceSearchToolDefs(): ToolDef[] {
 }
 
 function createInterfaceSearchHandler(ctx: ToolContext): Record<string, ToolHandler> {
-  let cachedInterfaces: import("../constraint/interface.js").FileInterface[] | null = null;
+  // Only cache the expensive initial scan result; subsequent reads go to disk
+  let initialScan: import("../constraint/interface.js").FileInterface[] | null = null;
 
   const getInterfaces = () => {
-    if (cachedInterfaces) return cachedInterfaces;
     const loaded = loadAllFileInterfaces(ctx.workspaceRoot);
-    if (loaded.length > 0) { cachedInterfaces = loaded; return loaded; }
-    // Fresh project — scan and index
-    cachedInterfaces = scanAndIndexAllFiles(ctx.workspaceRoot);
-    return cachedInterfaces;
+    if (loaded.length > 0) return loaded;
+    // Fresh project — scan once, write index files, then use disk reads
+    if (initialScan) return initialScan;
+    initialScan = scanAndIndexAllFiles(ctx.workspaceRoot);
+    return initialScan;
   };
 
   return {
