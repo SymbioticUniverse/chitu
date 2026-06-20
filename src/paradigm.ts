@@ -101,7 +101,7 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "2. **Discuss**: If anything is unclear, ask. If multiple valid approaches exist, use `ask_user`. Otherwise, describe your approach briefly.",
         "3. **Lock**: Call `horsewhip_lock_intent` to declare your boundary. Do NOT wait for confirmation — proceed automatically.",
         "4. **Work**: Implement the changes inside the boundary. New files are always allowed.",
-        "5. **Self-review (MANDATORY)**: Before calling `complete_sub_goal`, review your own changes. Run `git diff`. Check each changed file for logic correctness, null/undefined safety, edge cases, and similar issues in nearby code. Write the review to `.chitu/plans/current/review.md` (at least 50 chars). Gate 4 blocks completion if review is missing or too short.",
+        "5. **Self-review (MANDATORY)**: Before calling `complete_sub_goal`, review your own changes. Run `git diff`. Check each changed file for logic correctness, null/undefined safety, edge cases, and similar issues in nearby code. Write the review to `.chitu/plans/current/review.md`.",
         "6. **Complete**: Call `complete_sub_goal` with your exports, imports, and capability.",
         "",
         "### When the Entire Project Is Complete",

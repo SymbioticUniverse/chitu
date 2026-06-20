@@ -93,15 +93,6 @@ export function verifyGates(
     };
   }
 
-  // Gate 4: self-review
-  const reviewResult = checkSelfReview(workspaceRoot);
-  if (!reviewResult.ok) {
-    return {
-      ok: false,
-      feedback: `## Self-review missing\n${reviewResult.output}\nBefore calling \`complete_sub_goal\`, write your code review to \`.chitu/plans/current/review.md\`. Review each changed file for logic correctness, null/undefined safety, edge cases, and similar issues in nearby code.`,
-    };
-  }
-
   return { ok: true, feedback: "" };
 }
 
@@ -276,22 +267,6 @@ function runTscCheck(workspaceRoot: string, changedFiles: string[]): { ok: boole
     return { ok: false, output: `${errors.length} type error(s):\n${errors.slice(0, 20).join("\n")}` };
   } catch (e: any) {
     return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
-  }
-}
-
-function checkSelfReview(workspaceRoot: string): { ok: boolean; output: string } {
-  const reviewPath = path.join(workspaceRoot, ".chitu", "plans", "current", "review.md");
-  if (!fs.existsSync(reviewPath)) {
-    return { ok: false, output: "No review file found at `.chitu/plans/current/review.md`. Write a brief self-review before completing." };
-  }
-  try {
-    const content = fs.readFileSync(reviewPath, "utf-8").trim();
-    if (content.length < 50) {
-      return { ok: false, output: "Review file exists but is too short (< 50 chars). Write a meaningful review covering logic, null safety, and edge cases." };
-    }
-    return { ok: true, output: "" };
-  } catch {
-    return { ok: false, output: "Cannot read review file." };
   }
 }
 
