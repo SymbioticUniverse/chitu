@@ -359,7 +359,7 @@ export class Agent {
       let result;
       try {
         result = await this.provider.streamToMessage(
-          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined, max_tokens: 4096 },
+          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined, max_tokens: 16384 },
           onToken, roundSignal, onReasoning,
         );
       } finally { clearTimeout(roundTimer); roundTimer = undefined; }
@@ -835,7 +835,8 @@ export class Agent {
             // Don't nag — present the result and let the user decide next steps.
             const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
             const hadToolCalls = lastAssistant?.tool_calls && lastAssistant.tool_calls.length > 0;
-            if (!hadToolCalls && finalResult) {
+            if (!hadToolCalls && result) {
+              finalResult = result;
               onToolOutput?.("phase", `【约束模式暂停 — AI 已完成总结，等待下一条指令】`);
               return finalResult;
             }
