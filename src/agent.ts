@@ -831,13 +831,20 @@ export class Agent {
 
           const completed = executor.ensureBoundary();
           if (!completed) {
+            // If AI responded with text only (no tool calls), it's signaling completion.
+            // Don't nag — present the result and let the user decide next steps.
+            const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
+            const hadToolCalls = lastAssistant?.tool_calls && lastAssistant.tool_calls.length > 0;
+            if (!hadToolCalls && finalResult) {
+              onToolOutput?.("phase", `【约束模式暂停 — AI 已完成总结，等待下一条指令】`);
+              return finalResult;
+            }
+
             stillWorkingRounds++;
-            if (stillWorkingRounds >= 5) {
-              // AI has responded 5 times without calling complete_sub_goal — likely stuck or chatting
+            if (stillWorkingRounds >= 4) {
               onToolOutput?.("phase", `【约束模式暂停 — AI 已连续 ${stillWorkingRounds} 轮未调用 complete_sub_goal，可能需要更明确的指示。请回复继续。】`);
               return finalResult || "(awaiting direction)";
             }
-            // AI still working — nudge to call complete_sub_goal when ready
             this.messages.push({
               role: "user",
               content: "You have not called `complete_sub_goal` yet. Call `complete_sub_goal` with your exports/imports to trigger git commit and save your work. Otherwise continue working.",
