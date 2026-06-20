@@ -359,7 +359,7 @@ export class Agent {
       let result;
       try {
         result = await this.provider.streamToMessage(
-          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined, max_tokens: 16384 },
+          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined },
           onToken, roundSignal, onReasoning,
         );
       } finally { clearTimeout(roundTimer); roundTimer = undefined; }
