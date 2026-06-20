@@ -6,7 +6,7 @@ import { writeMiniPlan, type MiniPlan } from "./plan.js";
 import {
   updateInterfacesAfterIteration,
 } from "./interface.js";
-import { CONSTRAINT_INSTRUCTION, buildGraphNote, buildCompactState, markPlanItemsDone } from "./interface-graph.js";
+import { CONSTRAINT_INSTRUCTION, buildCompactState, markPlanItemsDone } from "./interface-graph.js";
 import {
   verifyGates,
   verifyExpandReasons,
@@ -107,16 +107,14 @@ export class ConstraintExecutor {
     const sysMsg = this.agent.getMessages()[0];
     if (sysMsg && sysMsg.role === "system") {
       this.originalSystemPrompt = typeof sysMsg.content === "string" ? sysMsg.content : "";
-      const graphNote = buildGraphNote(this.workspaceRoot);
-      sysMsg.content = [this.originalSystemPrompt, CONSTRAINT_INSTRUCTION, graphNote].filter(Boolean).join("\n\n");
+      sysMsg.content = [this.originalSystemPrompt, CONSTRAINT_INSTRUCTION].filter(Boolean).join("\n\n");
     }
   }
 
   refreshContext(): void {
     const sysMsg = this.agent.getMessages()[0];
     if (!sysMsg || sysMsg.role !== "system") return;
-    const graphNote = buildGraphNote(this.workspaceRoot);
-    sysMsg.content = [this.originalSystemPrompt || "", CONSTRAINT_INSTRUCTION, graphNote].filter(Boolean).join("\n\n");
+    sysMsg.content = [this.originalSystemPrompt || "", CONSTRAINT_INSTRUCTION].filter(Boolean).join("\n\n");
   }
 
   resetForNextIteration(): void {

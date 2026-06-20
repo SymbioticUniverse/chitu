@@ -97,7 +97,7 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "",
         "### Each Iteration",
         "",
-        "1. **Understand**: Read relevant source files (not just interface docs). Trace code paths, find root causes, look for related issues.",
+        "1. **Understand**: Call `search_interfaces` to discover project files and their exports. Then read relevant source files (not just interface docs). Trace code paths, find root causes, look for related issues.",
         "2. **Discuss**: If anything is unclear, ask. If multiple valid approaches exist, use `ask_user`. Otherwise, describe your approach briefly.",
         "3. **Lock**: Call `horsewhip_lock_intent` to declare your boundary. Do NOT wait for confirmation — proceed automatically.",
         "4. **Work**: Implement the changes inside the boundary. New files are always allowed.",

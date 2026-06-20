@@ -26,14 +26,17 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "### Starting Each Iteration",
   "",
-  "1. **Interfaces are pre-indexed**: The Interface Graph below lists every source file, its exports, and its imports. Use it ONLY for file discovery and dependency mapping. It does NOT replace reading source code — interface docs are metadata, not implementation.",
-  "   - If the graph is empty → fresh project, proceed to step 2.",
+  "1. **Discover project structure with `search_interfaces`**: Call this tool to see all files, their exports, and dependencies.",
+  "   - No args → lists all files with export counts",
+  "   - `query: \"keyword\"` → search file names and exports",
+  "   - `file: \"path/to/file.ts\"` → see full exports and imports for one file",
+  "   - Use this for file discovery and dependency mapping. It does NOT replace reading source code — interface docs are metadata, not implementation.",
   "",
   "2. **Check plan**: Read `.chitu/plans/`. Is there a plan for this task?",
   "   - **No plan** → create one as `{plan-name}.md`. Break the task into sub-tasks, one module each.",
   "   - **Has plan** → read it. `[x]` = done (interface doc exists), `[ ]` = not done.",
   "",
-  "3. **Three-way alignment**: Cross-reference plan, interface docs, and disk files.",
+  "3. **Three-way alignment**: Cross-reference plan, interface docs (via `search_interfaces`), and disk files.",
   "   - File on disk + plan unchecked + no interface doc → **orphan** (interrupted iteration). Priority: lock it, review/complete it, export its interface.",
   "   - Plan checked + interface exists → already done, skip.",
   "",
@@ -86,7 +89,7 @@ export function buildCompactState(userGoal: string, workspaceRoot: string): stri
   }
   parts.push("## Next Steps");
   parts.push("1. Read `.chitu/plans/` to see the plan and what's checked off.");
-  parts.push("2. Read `.chitu/interfaces/` to see available modules and their exports.");
+  parts.push("2. Call `search_interfaces` to see available modules and their exports.");
   parts.push("3. Cross-reference with disk files to detect orphans (interrupted iterations).");
   parts.push("4. Pick the next unchecked plan item, lock its boundary, and continue.");
   return parts.join("\n");

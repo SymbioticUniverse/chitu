@@ -7,6 +7,7 @@ import { createTaskTools } from "./task.js";
 import { createMemoryTools } from "./memory.js";
 import { createCLITools, cliToolDefs } from "./cli.js";
 import { createAutoInstallTools, autoInstallToolDefs } from "./auto-install.js";
+import { loadAllFileInterfaces, scanAndIndexAllFiles } from "../constraint/interface.js";
 import type { ToolContext } from "../types.js";
 
 export function getAllToolDefs(): ToolDef[] {
@@ -20,6 +21,7 @@ export function getAllToolDefs(): ToolDef[] {
     ...completionToolDefs(),
     ...horsewhipToolDefs(),
     ...autoInstallToolDefs(),
+    ...interfaceSearchToolDefs(),
   ];
 }
 
@@ -33,6 +35,7 @@ export function getAllToolHandlers(ctx: ToolContext): Record<string, ToolHandler
     ...createProgressHandler(),
     ...createCompletionHandler(ctx),
     ...createAutoInstallTools(ctx),
+    ...createInterfaceSearchHandler(ctx),
   };
 }
 
@@ -432,6 +435,109 @@ function createCompletionHandler(ctx: ToolContext): Record<string, ToolHandler> 
         timestamp: new Date().toISOString(),
       }, null, 2), "utf-8");
       return JSON.stringify({ ok: true, saved: filePath });
+    },
+  };
+}
+
+// ── Interface search tool ──────────────────────────────────────────────
+
+function interfaceSearchToolDefs(): ToolDef[] {
+  return [
+    {
+      name: "search_interfaces",
+      description:
+        "Search the project's interface index. Use this to discover files, their exports, and dependencies. " +
+        "Call without arguments to list all files. Call with a query to search file names and exports. " +
+        "Call with a specific file path to see its full exports and imports.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Optional: keyword to search in file paths and export names. Omit to list all files.",
+          },
+          file: {
+            type: "string",
+            description: "Optional: specific file path relative to workspace root. Shows exports and imports for that file only.",
+          },
+        },
+        required: [],
+      },
+      category: "read",
+    },
+  ];
+}
+
+function createInterfaceSearchHandler(ctx: ToolContext): Record<string, ToolHandler> {
+  let cachedInterfaces: import("../constraint/interface.js").FileInterface[] | null = null;
+
+  const getInterfaces = () => {
+    if (cachedInterfaces) return cachedInterfaces;
+    const loaded = loadAllFileInterfaces(ctx.workspaceRoot);
+    if (loaded.length > 0) { cachedInterfaces = loaded; return loaded; }
+    // Fresh project — scan and index
+    cachedInterfaces = scanAndIndexAllFiles(ctx.workspaceRoot);
+    return cachedInterfaces;
+  };
+
+  return {
+    search_interfaces: async (_args) => {
+      const args = _args as Record<string, unknown>;
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const file = typeof args.file === "string" ? args.file.trim() : "";
+      const interfaces = getInterfaces();
+
+      // Single file lookup
+      if (file) {
+        const match = interfaces.find((i) => i.file === file || i.file.endsWith("/" + file));
+        if (!match) {
+          const near = interfaces.filter((i) => i.file.includes(file));
+          if (near.length === 0) return JSON.stringify({ error: `File "${file}" not found in interface index` });
+          return JSON.stringify({
+            hint: `"${file}" not found exactly. Did you mean one of these?`,
+            candidates: near.map((i) => i.file).slice(0, 10),
+          });
+        }
+        return JSON.stringify({
+          file: match.file,
+          exports: match.exports,
+          imports: match.imports.map((i) => `${i.symbol} ← ${i.from}`),
+          capability: match.capability,
+        });
+      }
+
+      // Search mode
+      if (query) {
+        const q = query.toLowerCase();
+        const results = interfaces.filter((i) =>
+          i.file.toLowerCase().includes(q) ||
+          i.exports.some((e) => e.toLowerCase().includes(q)) ||
+          (i.capability && i.capability.toLowerCase().includes(q)),
+        );
+        if (results.length === 0) return JSON.stringify({ results: [], hint: `No files matching "${query}"` });
+        const MAX_EXPORTS = 8;
+        return JSON.stringify({
+          query,
+          count: results.length,
+          results: results.slice(0, 20).map((i) => ({
+            file: i.file,
+            exports: i.exports.length > MAX_EXPORTS ? [...i.exports.slice(0, MAX_EXPORTS), `... +${i.exports.length - MAX_EXPORTS} more`] : i.exports,
+            capability: i.capability || "",
+          })),
+          ...(results.length > 20 ? { truncated: `showing 20 of ${results.length} results` } : {}),
+        });
+      }
+
+      // List all files (summary)
+      return JSON.stringify({
+        totalFiles: interfaces.length,
+        files: interfaces.map((i) => ({
+          file: i.file,
+          exportCount: i.exports.length,
+          topExports: i.exports.slice(0, 3),
+          capability: i.capability || "",
+        })),
+      });
     },
   };
 }
