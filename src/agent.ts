@@ -410,7 +410,7 @@ export class Agent {
               const gates = this.constraintExecutor.verifyGates(completed.exports, completed.imports);
               this.constraintExecutor.lastGateResult = gates;
               toolResults[i] = gates.ok
-                ? { tool_call_id: tc.id, content: JSON.stringify({ ok: true, gate_verified: true, result: this.constraintExecutor.finalize(completed.capability) }) }
+                ? { tool_call_id: tc.id, content: JSON.stringify({ ok: true, gate_verified: true, result: this.constraintExecutor.finalize(completed.capability), ...(gates.warnings?.length ? { architecture_warnings: gates.warnings } : {}) }) }
                 : { tool_call_id: tc.id, content: JSON.stringify({ ok: false, error: gates.feedback }) };
             } else if (completed?.feedback) {
               toolResults[i] = { tool_call_id: tc.id, content: JSON.stringify({ ok: false, error: completed.feedback }) };

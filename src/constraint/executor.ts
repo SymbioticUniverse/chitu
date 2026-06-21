@@ -200,7 +200,7 @@ export class ConstraintExecutor {
     } catch { return []; }
   }
 
-  verifyGates(exports: string[] | Record<string, string[]>, imports: string[] | Record<string, string[]>): { ok: boolean; feedback: string } {
+  verifyGates(exports: string[] | Record<string, string[]>, imports: string[] | Record<string, string[]>): { ok: boolean; feedback: string; warnings?: string[] } {
     return verifyGates(this.workspaceRoot, this.targetFiles, exports, imports);
   }
 

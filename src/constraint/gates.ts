@@ -12,6 +12,8 @@ import {
 export interface GateResult {
   ok: boolean;
   feedback: string;
+  /** Non-blocking architecture warnings — shown to AI but don't prevent commit */
+  warnings?: string[];
 }
 
 export interface ExpandReasonEntry {
@@ -93,7 +95,10 @@ export function verifyGates(
     };
   }
 
-  return { ok: true, feedback: "" };
+  // Gate 4 (non-blocking): architecture smell detection
+  const archWarnings = checkArchitectureSmells(workspaceRoot, realChanges);
+
+  return { ok: true, feedback: "", warnings: archWarnings.length > 0 ? archWarnings : undefined };
 }
 
 function verifyExports(
@@ -268,6 +273,55 @@ function runTscCheck(workspaceRoot: string, changedFiles: string[]): { ok: boole
   } catch (e: any) {
     return { ok: false, output: String(e?.stdout ?? e?.stderr ?? e).slice(0, 5000) };
   }
+}
+
+/** Detect architecture smells in changed files (non-blocking warning). */
+function checkArchitectureSmells(
+  workspaceRoot: string,
+  changedFiles: string[],
+): string[] {
+  const warnings: string[] = [];
+  const codeExts = new Set([".js", ".ts", ".jsx", ".tsx", ".py", ".mjs", ".cjs"]);
+
+  for (const file of changedFiles) {
+    const ext = path.extname(file).toLowerCase();
+    if (!codeExts.has(ext)) continue;
+
+    const fullPath = path.join(workspaceRoot, file);
+    if (!fs.existsSync(fullPath)) continue;
+
+    let content: string;
+    try { content = fs.readFileSync(fullPath, "utf-8"); } catch { continue; }
+
+    // 1. Too many top-level definitions in one file
+    const funcMatches = content.match(/(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/g) ?? [];
+    const classMatches = content.match(/(?:^|\n)\s*(?:export\s+)?class\s+(\w+)/g) ?? [];
+    const totalDefs = funcMatches.length + classMatches.length;
+    if (totalDefs > 5) {
+      warnings.push(`**Architecture**: \`${file}\` defines ${totalDefs} functions/classes. Consider splitting into focused modules (≤5 top-level definitions each).`);
+    }
+
+    // 2. Mixed responsibilities: routing + validation + data-access in one file
+    const hasRoute = /\.(?:get|post|put|delete|patch|use)\s*\(/i.test(content)
+      || /router\.(?:get|post|put|delete|patch)/i.test(content)
+      || /app\.(?:get|post|put|delete|patch|use)/i.test(content)
+      || /@(?:Get|Post|Put|Delete|Patch)\b/.test(content);
+    const hasValidation = /(?:joi\.|zod\.|express-validator|check\s*\(\s*['"]|validate(?:Request|Body|Query|Params)?\s*[:(])/i.test(content)
+      || /if\s*\(\s*!\s*(?:req\.(?:body|query|params|user|session)|auth)/i.test(content);
+    const hasDataAccess = /(?:\.query\s*\(|\.execute\s*\(|\.findOne?\(|\.insert\(|\.update\(|SELECT\s|INSERT\s|UPDATE\s|DELETE\s)/i.test(content);
+    const hashes = [hasRoute && "routing", hasValidation && "validation", hasDataAccess && "data-access"].filter(Boolean) as string[];
+    if (hashes.length >= 2) {
+      warnings.push(`**Architecture**: \`${file}\` mixes ${hashes.join(" + ")} in one file. Separate concerns: routes → call business logic → business logic calls data layer.`);
+    }
+
+    // 3. Inline auth/permission guards in route handlers
+    const inlineGuards = content.match(/if\s*\(\s*!?\s*(?:req\.(?:user|session|auth)|auth|token|permission|role)/gi) ?? [];
+    if (inlineGuards.length >= 2 && hasRoute) {
+      warnings.push(`**Architecture**: \`${file}\` has ${inlineGuards.length} inline auth/permission checks in route code. Extract to middleware or a dedicated auth module.`);
+    }
+  }
+
+  return warnings;
 }
 
 /** Verify expand reasons against actual interface changes. Returns score delta and labels. */
