@@ -946,6 +946,29 @@ export class Agent {
         lastGateFailureHash = "";
         sameFailureStreak = 0;
 
+        // Every 3 completed sub-goals: trigger architecture review checkpoint
+        if (executor.completedIterations > 0 && executor.completedIterations % 3 === 0) {
+          this.messages.push({
+            role: "user" as const,
+            content: [
+              "## Architecture Review Checkpoint",
+              "",
+              `You have completed ${executor.completedIterations} sub-goals. Before the next task, take a step back and review the architecture:`,
+              "",
+              "1. **Read all recently modified files** (use `git diff HEAD~3 --name-only` or `search_interfaces` to find them).",
+              "2. Answer these questions:",
+              "   - Is any validation/security logic inline in route handlers? If yes, extract it.",
+              "   - Are there files with >5 functions mixing different responsibilities? If yes, split them.",
+              "   - Is there shared logic duplicated across files? If yes, extract a shared module.",
+              "3. **Write findings to `.chitu/plans/architecture-review.md`** — be specific: file names, line ranges, recommended actions.",
+              "4. If fixes are needed: call `horsewhip_lock_intent` with the affected files, make the changes, then `complete_sub_goal`.",
+              "5. If architecture is clean: call `complete_sub_goal` with an empty boundary to signal the review is done and continue to the next task.",
+              "",
+              "This review IS your next sub-goal. Treat it as real work — the architecture score matters.",
+            ].join("\n"),
+          });
+        }
+
         // Reset completion flag so the next iteration's inner loop doesn't immediately break.
         // (finalize() sets this to true; it must be false at the start of each new iteration.)
         executor.iterationCompleted = false;
