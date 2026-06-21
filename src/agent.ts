@@ -332,7 +332,7 @@ export class Agent {
     let emptyResponseCount = 0;
     let idleRounds = 0;                       // consecutive rounds with only read-only tools
     const MAX_IDLE_ROUNDS = 6;
-    const ROUND_TIMEOUT_MS = 300_000;
+    const ROUND_TIMEOUT_MS = 900_000; // 15 min — must exceed stream idle timeout (600s); only fires when API call itself hangs beyond recovery
     const MAX_TIMEOUTS = 3;
     const READ_ONLY_TOOLS = new Set([
       "Read", "WebFetch", "WebSearch", "AskUserQuestion",
@@ -369,6 +369,11 @@ export class Agent {
       // Handle aborted/timeout
       if (result.aborted) {
         if (signal?.aborted) { finalResponse = result.content || "(aborted)"; this.writeCheckpoint("aborted"); break; }
+        // Appraise/manual mode: just return partial content — don't loop with "continue from breakpoint"
+        if (this.paradigmState.resolved === "appraise" || this.paradigmState.resolved === "manual") {
+          finalResponse = result.content || "(timeout)";
+          break;
+        }
         consecutiveTimeouts++;
         if (consecutiveTimeouts > MAX_TIMEOUTS) { finalResponse = `(连续 ${MAX_TIMEOUTS} 轮超时，任务中断)`; this.writeCheckpoint("timeout"); break; }
         if (result.content) this.messages.push({ role: "assistant", content: result.content });
