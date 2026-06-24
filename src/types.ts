@@ -412,6 +412,8 @@ export interface ToolContext {
   workspaceRoot: string;
   sessionId: string;
   horsewhipGuard: HorsewhipGuard;
+  /** Set before tool execution to enable incremental progress — keeps watchdog alive during long ops */
+  onProgress?: (toolName: string, chunk: string) => void;
 }
 
 export interface HorsewhipGuard {

@@ -114,7 +114,7 @@ export function createWriteTools(ctx: ToolContext): Record<string, ToolHandler> 
     run_shell: async (args) => {
       const command = args["command"] as string;
       const workdir = args["workdir"] ? resolve(args["workdir"] as string) : root;
-      const timeout = (args["timeout"] as number) ?? 120000;
+      const timeout = (args["timeout"] as number) ?? 600_000; // 10 min — install/compile commands need time
 
       // Boundary check: block shell commands that write to out-of-boundary files
       if (guard.checkCommand) {
@@ -135,9 +135,16 @@ export function createWriteTools(ctx: ToolContext): Record<string, ToolHandler> 
         let stdout = "";
         let stderr = "";
         let truncated = false;
+        let lastProgressAt = 0;
 
         child.stdout?.on("data", (d: Buffer) => {
-          if (stdout.length < MAX_OUTPUT) stdout += d.toString();
+          const text = d.toString();
+          const now = Date.now();
+          if (now - lastProgressAt >= 5000) { // throttle: at most once per 5s
+            ctx.onProgress?.("run_shell", text.slice(-100)); // tail end of recent output
+            lastProgressAt = now;
+          }
+          if (stdout.length < MAX_OUTPUT) stdout += text;
           else truncated = true;
         });
         child.stderr?.on("data", (d: Buffer) => {

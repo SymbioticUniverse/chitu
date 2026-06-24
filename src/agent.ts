@@ -398,7 +398,12 @@ export class Agent {
 
       if (result.toolCalls.length === 0) { finalResponse = result.content; break; }
 
+      // Wire tool progress to watchdog reset — long-running tools (run_shell, compile) stay alive
+      this.ctx.onProgress = onToolOutput
+        ? (name, _chunk) => onToolOutput(name, "")
+        : undefined;
       const toolResults = await this.executeToolCalls(result.toolCalls);
+      this.ctx.onProgress = undefined;
 
       // Constraint mode: intercept complete_sub_goal
       if (this.constraintExecutor) {
