@@ -851,6 +851,8 @@ export class Agent {
             if (!hadToolCalls && result) {
               textOnlyRounds++;
               const wasTruncated = this.lastFinishReason === "length";
+              // Always notify user that auto-restart is happening
+              onToolOutput?.("phase", `【AI 响应中断 — 自动重启中（${textOnlyRounds}/5）${wasTruncated ? "，token 上限截断" : ""}】`);
               // Check if AI is truly stuck (many text-only rounds, no file changes)
               if (textOnlyRounds >= 5) {
                 let hasChanges = false;
