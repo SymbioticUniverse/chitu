@@ -12,6 +12,27 @@ import { isAbortError } from "./types.js";
 import type { AIProvider, ProviderConfig } from "./types.js";
 import { extractCachedTokens } from "./utils.js";
 
+const MAX_FETCH_RETRIES = 2;
+const FETCH_RETRY_DELAY_MS = 2000;
+
+/** Retry fetch on transient network errors (ECONNRESET, ETIMEDOUT, fetch failed, etc.) */
+async function fetchWithRetry(url: string, init: RequestInit, retries = MAX_FETCH_RETRIES): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err: unknown) {
+      if (attempt >= retries) throw err;
+      if (isAbortError(err)) throw err;
+      const msg = String(err);
+      const isTransient = /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|ENETUNREACH|ECONNREFUSED|socket hang up/i.test(msg);
+      if (!isTransient) throw err;
+      logger.warn(`Fetch attempt ${attempt + 1} failed, retrying in ${FETCH_RETRY_DELAY_MS}ms...`, { error: msg });
+      await new Promise((r) => setTimeout(r, FETCH_RETRY_DELAY_MS));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 interface OpenAIToolDef {
   type: "function";
   function: {
@@ -140,7 +161,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
 
   async chat(req: ChatRequest): Promise<ChatResponse> {
     const messages = this.sanitizeMessages(req.messages);
-    const resp = await fetch(`${this.baseUrl}/chat/completions`, {
+    const resp = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -167,7 +188,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
 
   async *stream(req: ChatRequest, signal?: AbortSignal): AsyncGenerator<StreamEvent> {
     const messages = this.sanitizeMessages(req.messages);
-    const resp = await fetch(`${this.baseUrl}/chat/completions`, {
+    const resp = await fetchWithRetry(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
