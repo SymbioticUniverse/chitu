@@ -904,10 +904,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       if (toolName === "phase") {
         if (!streamOpened) {
           beginOutputBlock();
+          write(color.red("chitu: "));
           streamOpened = true;
           state.printingAssistant = true;
         }
-        write(color.yellow("chitu: ") + sanitized + "\n");
+        write(color.dim(sanitized) + "\n");
         return;
       }
 
