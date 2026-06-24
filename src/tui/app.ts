@@ -1091,7 +1091,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       state.streaming = false;
       state.printingAssistant = false;
       state.responseCodeBlock = false; state.codeBlockLang = "";
-      state.taskAbort = null;
+      state.taskAbort = new AbortController(); // keep alive — Ctrl+C must always work
       state.pendingImages = [];
       updateScrollRegion();
       drawPrompt();

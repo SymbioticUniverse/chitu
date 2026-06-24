@@ -287,10 +287,11 @@ export abstract class OpenAICompatProvider implements AIProvider {
     onToken?: (text: string) => void,
     signal?: AbortSignal,
     onReasoning?: (text: string) => void,
-  ): Promise<{ content: string; reasoning: string; toolCalls: ToolCall[]; aborted: boolean; usage?: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } }> {
+  ): Promise<{ content: string; reasoning: string; toolCalls: ToolCall[]; aborted: boolean; finishReason?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } }> {
     let content = "";
     let reasoning = "";
     let aborted = false;
+    let finishReason: string | undefined;
     let usage: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } | undefined;
     const toolCalls: Map<
       number,
@@ -322,6 +323,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
             break;
           case "done":
           case "finish":
+            if (event.type === "finish") finishReason = (event as any).reason;
             break;
         }
       }
@@ -337,6 +339,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
       content,
       reasoning,
       aborted,
+      finishReason,
       usage,
       toolCalls: [...toolCalls.values()]
         .filter((tc) => tc.id)

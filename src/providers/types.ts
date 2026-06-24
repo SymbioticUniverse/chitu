@@ -50,7 +50,7 @@ export interface AIProvider {
     onToken?: (text: string) => void,
     signal?: AbortSignal,
     onReasoning?: (text: string) => void,
-  ): Promise<{ content: string; reasoning: string; toolCalls: ToolCall[]; aborted: boolean; usage?: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } }>;
+  ): Promise<{ content: string; reasoning: string; toolCalls: ToolCall[]; aborted: boolean; finishReason?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } }>;
 }
 
 /** Check if an error is caused by an aborted request (browser + Node.js).

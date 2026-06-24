@@ -87,6 +87,7 @@ export class Agent {
   private taskIntent: TaskIntent = "new_feature";
   private auditor: Auditor;
   private lastUsage: { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } | null = null;
+  private lastFinishReason: string | undefined;
   private onCompress: ((phase: string, progress: number) => void) | null = null;
   private soulRoundCounter = 0;
   private baselineTokens = 0;
@@ -396,7 +397,7 @@ export class Agent {
       if (result.reasoning) assistantMsg.reasoning_content = result.reasoning;
       this.messages.push(assistantMsg);
 
-      if (result.toolCalls.length === 0) { finalResponse = result.content; break; }
+      if (result.toolCalls.length === 0) { finalResponse = result.content; this.lastFinishReason = result.finishReason; break; }
 
       // Wire tool progress to watchdog reset — long-running tools (run_shell, compile) stay alive
       this.ctx.onProgress = onToolOutput
@@ -750,6 +751,7 @@ export class Agent {
         let aiAskedUser = false;
         let gateAttempts = 0;
         let stillWorkingRounds = 0;          // consecutive "still working" rounds without gate attempt
+        let textOnlyRounds = 0;             // consecutive text-only (no tool call) responses — auto-restart
 
         // Dynamic limits: tighten as more sub-goals complete
         executor.maxAttempts = executor.completedIterations < 2 ? 3 : 2;
@@ -809,6 +811,7 @@ export class Agent {
 
           if (preGates) {
             stillWorkingRounds = 0;
+            textOnlyRounds = 0;
             if (preGates.ok) {
               // finalize() was already called in run() interception
               if (executor.iterationCompleted) {
@@ -841,14 +844,53 @@ export class Agent {
 
           const completed = executor.ensureBoundary();
           if (!completed) {
-            // If AI responded with text only (no tool calls), it's signaling completion.
-            // Don't nag — present the result and let the user decide next steps.
+            // If AI responded with text only (no tool calls), it may have been truncated mid-response.
+            // Constraint mode is autonomous — auto-restart, don't return to TUI.
             const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
             const hadToolCalls = lastAssistant?.tool_calls && lastAssistant.tool_calls.length > 0;
             if (!hadToolCalls && result) {
-              finalResult = result;
-              onToolOutput?.("phase", `【约束模式暂停 — AI 已完成总结，等待下一条指令】`);
-              return finalResult;
+              textOnlyRounds++;
+              const wasTruncated = this.lastFinishReason === "length";
+              // Check if AI is truly stuck (many text-only rounds, no file changes)
+              if (textOnlyRounds >= 5) {
+                let hasChanges = false;
+                try {
+                  const diffOut = execSync("git diff HEAD --name-only 2>/dev/null", {
+                    cwd: this.workspaceRoot, encoding: "utf-8", timeout: 5000,
+                  }).trim();
+                  hasChanges = diffOut.length > 0;
+                } catch { /* can't check */ }
+                if (!hasChanges) {
+                  // Truly stuck — no file changes after 5 text-only rounds
+                  finalResult = result;
+                  onToolOutput?.("phase", `【约束模式暂停 — AI 已连续 ${textOnlyRounds} 轮纯文本回复且无文件变更。Type anything to continue】`);
+                  return `【约束模式暂停 — AI 已连续 ${textOnlyRounds} 轮纯文本回复且无文件变更。Type anything to continue】\n\n${finalResult}`;
+                }
+                // Has changes but keeps typing — push aggressive nudge
+                this.messages.push({
+                  role: "user",
+                  content: `You have file changes pending but haven't called \`complete_sub_goal\` after ${textOnlyRounds} text-only rounds. STOP TYPING and call \`complete_sub_goal\` NOW to commit your work.`,
+                });
+                continue;
+              }
+              // Smarter nudge based on why the stream ended
+              if (wasTruncated) {
+                this.messages.push({
+                  role: "user",
+                  content: `You were cut off by the token limit (max_tokens). Continue EXACTLY where you left off — do not repeat or summarize. Then call \`complete_sub_goal\` or continue working with your tools.`,
+                });
+              } else if (textOnlyRounds >= 2) {
+                this.messages.push({
+                  role: "user",
+                  content: `You've given ${textOnlyRounds} text-only responses. If you are done explaining, CALL YOUR TOOLS — \`complete_sub_goal\` to commit, or edit/run tools to continue. Do not just keep typing.`,
+                });
+              } else {
+                this.messages.push({
+                  role: "user",
+                  content: "Your last response was text-only — you may have been cut off. If you have more to say or work to do, continue now. If the response is complete, call `complete_sub_goal` to save your work.",
+                });
+              }
+              continue;
             }
 
             stillWorkingRounds++;
@@ -863,6 +905,7 @@ export class Agent {
             continue;
           }
           stillWorkingRounds = 0; // reset — AI called complete_sub_goal
+          textOnlyRounds = 0;
           if (completed.feedback) { this.messages.push({ role: "user", content: completed.feedback }); continue; }
 
           // Fallback: gates not pre-verified in run() interception (shouldn't normally happen)
