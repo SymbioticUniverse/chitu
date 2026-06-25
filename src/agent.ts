@@ -852,16 +852,15 @@ export class Agent {
               // Empty response is also a signal to restart
               if (!result) {
                 textOnlyRounds++;
-                onToolOutput?.("phase", `【AI 响应为空 — 自动重启中（${textOnlyRounds}/5）】`);
+                onToolOutput?.("phase", `【AI 响应为空 — 自动重启中（${textOnlyRounds}/3）】`);
                 this.messages.push({ role: "user", content: "Your response was empty. Continue working — call your tools or `complete_sub_goal` when done." });
                 continue;
               }
               textOnlyRounds++;
               const wasTruncated = this.lastFinishReason === "length";
-              // Always notify user that auto-restart is happening
-              onToolOutput?.("phase", `【AI 响应中断 — 自动重启中（${textOnlyRounds}/5）${wasTruncated ? "，token 上限截断" : ""}】`);
-              // Check if AI is truly stuck (many text-only rounds, no file changes)
-              if (textOnlyRounds >= 5) {
+              const maxTextOnly = 3; // fewer rounds before surfacing to user
+              onToolOutput?.("phase", `【AI 纯文本响应 — 自动重启中（${textOnlyRounds}/${maxTextOnly}）${wasTruncated ? "，token 截断" : ""}】`);
+              if (textOnlyRounds >= maxTextOnly) {
                 let hasChanges = false;
                 try {
                   const diffOut = execSync("git diff HEAD --name-only 2>/dev/null", {
@@ -870,28 +869,32 @@ export class Agent {
                   hasChanges = diffOut.length > 0;
                 } catch { /* can't check */ }
                 if (!hasChanges) {
-                  // Truly stuck — no file changes after 5 text-only rounds
                   finalResult = result;
-                  onToolOutput?.("phase", `【约束模式暂停 — AI 已连续 ${textOnlyRounds} 轮纯文本回复且无文件变更。Type anything to continue】`);
-                  return `【约束模式暂停 — AI 已连续 ${textOnlyRounds} 轮纯文本回复且无文件变更。Type anything to continue】\n\n${finalResult}`;
+                  onToolOutput?.("phase", `【约束模式暂停 — 连续 ${textOnlyRounds} 轮纯文本无变更。Type anything to continue】`);
+                  return `【约束模式暂停 — 连续 ${textOnlyRounds} 轮纯文本无变更。Type anything to continue】\n\n${finalResult}`;
                 }
-                // Has changes but keeps typing — push aggressive nudge
                 this.messages.push({
                   role: "user",
                   content: `You have file changes pending but haven't called \`complete_sub_goal\` after ${textOnlyRounds} text-only rounds. STOP TYPING and call \`complete_sub_goal\` NOW to commit your work.`,
                 });
                 continue;
               }
-              // Smarter nudge based on why the stream ended
+              // Smarter nudge: detect if AI is talking about blocked/locked files
+              const mentionsBlocked = /blocked|locked|unlock|解锁|block|BLOCKED|allowlist/i.test(result);
               if (wasTruncated) {
                 this.messages.push({
                   role: "user",
-                  content: `You were cut off by the token limit (max_tokens). Continue EXACTLY where you left off — do not repeat or summarize. Then call \`complete_sub_goal\` or continue working with your tools.`,
+                  content: `You were cut off by the token limit. Continue EXACTLY where you left off. Then call \`complete_sub_goal\` or continue with your tools.`,
+                });
+              } else if (mentionsBlocked && textOnlyRounds >= 1) {
+                this.messages.push({
+                  role: "user",
+                  content: `You mentioned blocked/locked files. If you need to edit them, call \`horsewhip_expand_boundary\` to request access. Otherwise call \`complete_sub_goal\` to commit your current work. Do NOT just keep typing explanations.`,
                 });
               } else if (textOnlyRounds >= 2) {
                 this.messages.push({
                   role: "user",
-                  content: `You've given ${textOnlyRounds} text-only responses. If you are done explaining, CALL YOUR TOOLS — \`complete_sub_goal\` to commit, or edit/run tools to continue. Do not just keep typing.`,
+                  content: `You've given ${textOnlyRounds} text-only responses. CALL YOUR TOOLS — \`complete_sub_goal\` to commit, or edit/run tools to continue. Stop typing.`,
                 });
               } else {
                 this.messages.push({
