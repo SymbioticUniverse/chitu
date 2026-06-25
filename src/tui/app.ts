@@ -320,11 +320,11 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       // Line 1: approve option
       const approveBg = approveSelected ? SEL : HL;
       write(ansi.moveTo(promptBottom - 1, 0) + approveBg + ansi.clearLine +
-        color.white("  " + (approveSelected ? "▶ " : "  ") + "Approve — allow modifying additional files") + "\x1b[K" + ansi.reset);
+        color.white("  " + (approveSelected ? "▶ " : "  ") + "Approve [Y] — allow modifying additional files") + "\x1b[K" + ansi.reset);
       // Line 0: deny option
       const denyBg = denySelected ? DEN : HL;
       write(ansi.moveTo(promptBottom, 0) + denyBg + ansi.clearLine +
-        color.white("  " + (denySelected ? "▶ " : "  ") + "Deny — keep original boundary") + "\x1b[K" + ansi.reset);
+        color.white("  " + (denySelected ? "▶ " : "  ") + "Deny [N] — keep original boundary") + "\x1b[K" + ansi.reset);
 
       // Extra line for file info
       const filesText = state.expandApproval.paths.join(", ");

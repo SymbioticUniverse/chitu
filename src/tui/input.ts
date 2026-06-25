@@ -270,6 +270,18 @@ export function createInputHandlers(
           deps.handleExpandSelect(false);
           return;
         }
+        // y/Y = approve, n/N = deny
+        const ch = state.pendingRawInput[0];
+        if (ch === "y" || ch === "Y") {
+          state.pendingRawInput = state.pendingRawInput.slice(1);
+          deps.handleExpandSelect(true);
+          return;
+        }
+        if (ch === "n" || ch === "N") {
+          state.pendingRawInput = state.pendingRawInput.slice(1);
+          deps.handleExpandSelect(false);
+          return;
+        }
         // Discard other input while in selection mode
         const cp = state.pendingRawInput.codePointAt(0)!;
         state.pendingRawInput = state.pendingRawInput.slice(cp > 0xFFFF ? 2 : 1);
