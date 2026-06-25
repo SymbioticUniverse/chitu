@@ -440,6 +440,9 @@ export class Agent {
       for (const tr of toolResults) this.messages.push({ role: "tool", content: tr.content, tool_call_id: tr.tool_call_id });
       if (result.content) finalResponse = result.content;
 
+      // If AI called ask_user, stop looping — don't let it answer its own question
+      if (result.toolCalls.some((tc) => tc.function.name === "ask_user")) break;
+
       // Idle detection: if all tool calls were read-only, count toward idle limit
       if (result.toolCalls.length > 0 && result.toolCalls.every((tc) => isReadOnlyTool(tc.function.name))) {
         idleRounds++;
@@ -780,8 +783,8 @@ export class Agent {
           }
 
           // If AI called ask_user, pause and wait for user response
-          const lastMsg = this.messages[this.messages.length - 1];
-          if (lastMsg?.role === "assistant" && lastMsg.tool_calls?.some((tc) => tc.function.name === "ask_user")) {
+          const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
+          if (lastAssistant?.tool_calls?.some((tc) => tc.function.name === "ask_user")) {
             aiAskedUser = true;
             finalResult = result;
             break;
@@ -790,7 +793,8 @@ export class Agent {
           // Discussion phase: AI described approach, now auto-confirm and move to execution
           if (discussionPhase) {
             discussionPhase = false;
-            const calledLockIntent = lastMsg?.role === "assistant" && lastMsg.tool_calls?.some((tc) =>
+            const lastAst = [...this.messages].reverse().find((m) => m.role === "assistant");
+            const calledLockIntent = lastAst?.tool_calls?.some((tc) =>
               tc.function.name === "mcp__horsewhip__horsewhip_lock_intent" ||
               tc.function.name === "horsewhip_lock_intent"
             );
