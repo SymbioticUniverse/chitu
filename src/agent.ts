@@ -848,7 +848,14 @@ export class Agent {
             // Constraint mode is autonomous — auto-restart, don't return to TUI.
             const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
             const hadToolCalls = lastAssistant?.tool_calls && lastAssistant.tool_calls.length > 0;
-            if (!hadToolCalls && result) {
+            if (!hadToolCalls) {
+              // Empty response is also a signal to restart
+              if (!result) {
+                textOnlyRounds++;
+                onToolOutput?.("phase", `【AI 响应为空 — 自动重启中（${textOnlyRounds}/5）】`);
+                this.messages.push({ role: "user", content: "Your response was empty. Continue working — call your tools or `complete_sub_goal` when done." });
+                continue;
+              }
               textOnlyRounds++;
               const wasTruncated = this.lastFinishReason === "length";
               // Always notify user that auto-restart is happening
