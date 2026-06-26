@@ -403,7 +403,7 @@ export class Agent {
       this.ctx.onProgress = onToolOutput
         ? (name, _chunk) => onToolOutput(name, "")
         : undefined;
-      const toolResults = await this.executeToolCalls(result.toolCalls);
+      const toolResults = await this.executeToolCalls(result.toolCalls, signal);
       this.ctx.onProgress = undefined;
 
       // Constraint mode: intercept complete_sub_goal
@@ -1089,7 +1089,7 @@ export class Agent {
 
   // ── Tool execution (delegated) ──
 
-  private buildToolExecContext(): ToolExecContext {
+  private buildToolExecContext(signal?: AbortSignal): ToolExecContext {
     return {
       rateLimiter: this.rateLimiter,
       mcpLoader: this.mcpLoader,
@@ -1101,11 +1101,12 @@ export class Agent {
       paradigmState: this.paradigmState,
       constraintExecutor: this.constraintExecutor,
       messages: this.messages,
+      abortSignal: signal,
     };
   }
 
-  private async executeToolCalls(toolCalls: ToolCall[]): Promise<ToolResult[]> {
-    return execTools(this.buildToolExecContext(), toolCalls);
+  private async executeToolCalls(toolCalls: ToolCall[], signal?: AbortSignal): Promise<ToolResult[]> {
+    return execTools(this.buildToolExecContext(signal), toolCalls);
   }
 
   // ── Context compression ──

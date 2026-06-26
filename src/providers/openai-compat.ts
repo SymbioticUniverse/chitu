@@ -223,6 +223,10 @@ export abstract class OpenAICompatProvider implements AIProvider {
     const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        if (signal?.aborted) {
+          reader.cancel().catch(() => {});
+          return { done: true, value: undefined };
+        }
         const elapsed = Date.now() - lastDataAt;
         if (elapsed >= STREAM_IDLE_TIMEOUT_MS) {
           return { done: true, value: undefined };

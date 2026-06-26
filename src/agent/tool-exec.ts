@@ -18,6 +18,7 @@ export interface ToolExecContext {
   paradigmState: ParadigmState;
   constraintExecutor: ConstraintExecutor | null;
   messages: Message[];
+  abortSignal?: AbortSignal;
 }
 
 /**
@@ -31,6 +32,10 @@ export async function executeToolCalls(
   const results: ToolResult[] = [];
 
   for (const tc of toolCalls) {
+    if (ctx.abortSignal?.aborted) {
+      results.push({ tool_call_id: tc.id, content: "(aborted)" });
+      continue;
+    }
     const name = tc.function.name;
     let args: Record<string, unknown>;
 

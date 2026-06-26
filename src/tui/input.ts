@@ -320,6 +320,7 @@ export function createInputHandlers(
         state.pendingRawInput = state.pendingRawInput.slice(1);
         if (state.busy) {
           state.taskAbort?.abort();
+          write(color.yellow("\n  [aborting...]\n"));
           continue;
         }
         // Same proven path as /quit: set running=false, let event loop call cleanup()
