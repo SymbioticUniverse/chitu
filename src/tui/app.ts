@@ -1171,6 +1171,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
   // ── Input handlers ──
 
+  // Forward-declared so input handler can call cleanup on Ctrl+C
+  let cleanup: () => void;
+
   const inputDeps: InputDeps = {
     drawPrompt,
     getHintMatches,
@@ -1181,6 +1184,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     cycleParadigm,
     detectImages,
     handleExpandSelect,
+    cleanup: () => cleanup(),
   };
   const inputHandlers: InputHandlers = createInputHandlers(state, inputDeps);
   const {
@@ -1189,7 +1193,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     handleSubmit, consumeRawInput,
   } = inputHandlers;
 
-  function cleanup() {
+  cleanup = () => {
     if (state.cleanupDone) return;
     state.cleanupDone = true;
 
@@ -1236,7 +1240,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     write("\n\n" + color.dim("  Chitu stopped. Goodbye.") + "\n\n");
 
     mcpLoader.stopAll().catch((e) => { logger.warn("MCP stopAll failed", { error: String(e) }); });
-  }
+  };
 
   // Register signal handlers before the event loop
   process.on("SIGINT", () => { state.running = false; cleanup(); process.exit(0); });

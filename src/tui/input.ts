@@ -35,6 +35,7 @@ export interface InputDeps {
   cycleParadigm: () => void;
   detectImages: (task: string) => { cleanText: string; imagePaths: string[] };
   handleExpandSelect: (approved: boolean) => void;
+  cleanup: () => void;
 }
 
 // ── Handler collection ──
@@ -323,8 +324,8 @@ export function createInputHandlers(
           continue;
         }
         state.running = false;
-        // cleanup is handled by app.ts event loop
-        return;
+        deps.cleanup();
+        process.exit(0);
       }
       if (state.pendingRawInput[0] === "\x0c") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
