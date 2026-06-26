@@ -745,6 +745,8 @@ export class Agent {
       let compactRounds = 0;                  // times we've compacted on this iteration
       let lastGateFailureHash = "";           // detect staleness — same failure repeating
       let sameFailureStreak = 0;
+      let autoRestartCount = 0;               // times we've auto-restarted (compacted + retried) across all iterations
+      const MAX_AUTO_RESTARTS = 12;           // hard cap — prevent infinite restart loops
 
       let discussionPhase = !cp;           // first entry without checkpoint = discussion phase
 
@@ -873,9 +875,25 @@ export class Agent {
                   hasChanges = diffOut.length > 0;
                 } catch { /* can't check */ }
                 if (!hasChanges) {
-                  finalResult = result;
-                  onToolOutput?.("phase", `【约束模式暂停 — 连续 ${textOnlyRounds} 轮纯文本无变更。Type anything to continue】`);
-                  return `【约束模式暂停 — 连续 ${textOnlyRounds} 轮纯文本无变更。Type anything to continue】\n\n${finalResult}`;
+                  // Auto-restart: compact context, reset, and keep fighting
+                  autoRestartCount++;
+                  if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+                    executor.rollback();
+                    onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】`);
+                    return finalResult || "【约束模式暂停 — 自动重启耗尽】";
+                  }
+                  onToolOutput?.("phase", `【约束模式自动重启 — 连续 ${textOnlyRounds} 轮纯文本无变更，压缩上下文后重试（${autoRestartCount}/${MAX_AUTO_RESTARTS}）】`);
+                  const compactState = executor.buildCompactState("");
+                  this.compactMessages(compactState);
+                  executor.refreshContext();
+                  executor.retryIteration();
+                  iterationCount--;
+                  gateFailures = [];
+                  compactRounds = 0;
+                  lastGateFailureHash = "";
+                  sameFailureStreak = 0;
+                  textOnlyRounds = 0;
+                  continue;
                 }
                 this.messages.push({
                   role: "user",
@@ -913,8 +931,25 @@ export class Agent {
 
             stillWorkingRounds++;
             if (stillWorkingRounds >= 4) {
-              onToolOutput?.("phase", `【约束模式暂停 — AI 已连续 ${stillWorkingRounds} 轮未调用 complete_sub_goal，可能需要更明确的指示。请回复继续。】`);
-              return finalResult || "(awaiting direction)";
+              autoRestartCount++;
+              if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+                executor.rollback();
+                onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】`);
+                return finalResult || "【约束模式暂停 — 自动重启耗尽】";
+              }
+              onToolOutput?.("phase", `【约束模式自动重启 — AI 连续 ${stillWorkingRounds} 轮未调用 complete_sub_goal，压缩上下文后重试（${autoRestartCount}/${MAX_AUTO_RESTARTS}）】`);
+              const compactState = executor.buildCompactState("");
+              this.compactMessages(compactState);
+              executor.refreshContext();
+              executor.retryIteration();
+              iterationCount--;
+              gateFailures = [];
+              compactRounds = 0;
+              lastGateFailureHash = "";
+              sameFailureStreak = 0;
+              stillWorkingRounds = 0;
+              textOnlyRounds = 0;
+              continue;
             }
             this.messages.push({
               role: "user",
@@ -972,11 +1007,27 @@ export class Agent {
             sameFailureStreak = 0;
             lastGateFailureHash = "";
           } else {
+            autoRestartCount++;
+            if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+              const doneCount = iterationCount - 1;
+              const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
+              onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】${doneNote}`);
+              executor.rollback();
+              return finalResult || "【约束模式暂停 — 自动重启耗尽】";
+            }
             const doneCount = iterationCount - 1;
             const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
-            onToolOutput?.("phase", `【约束模式暂停 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，AI 未做出有效修改。请给出更明确的指示后继续。】${doneNote}`);
-            executor.rollback();
-            return finalResult || "【约束模式暂停 — gate 验证连续失败】";
+            onToolOutput?.("phase", `【约束模式自动重启 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，压缩上下文后重试（${autoRestartCount}/${MAX_AUTO_RESTARTS}）】${doneNote}`);
+            const compactState = executor.buildCompactState("");
+            this.compactMessages(compactState);
+            executor.refreshContext();
+            executor.retryIteration();
+            iterationCount--;
+            gateFailures = [];
+            compactRounds = 0;
+            lastGateFailureHash = "";
+            sameFailureStreak = 0;
+            continue;
           }
         }
         if (!iterationSucceeded) {
