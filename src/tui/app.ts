@@ -1052,6 +1052,10 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
       } catch { /* ignore */ }
 
       if (streamOpened) {
+        // Constraint status messages (starting with 【) are NOT streamed — display them
+        if (lastResponse && /^【/.test(lastResponse.trim())) {
+          write(color.brightYellow(lastResponse.trim()) + "\n");
+        }
         write("\n");
       } else {
         if (lastResponse) { printAssistantBlock(lastResponse, scrollRegionBottom); }

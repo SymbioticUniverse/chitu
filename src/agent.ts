@@ -765,7 +765,7 @@ export class Agent {
         // "Still working" (no complete_sub_goal yet) does NOT consume a gate attempt.
         while (gateAttempts < executor.maxAttempts) {
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
-          if (signal?.aborted) { executor.rollback(); return result || "(aborted)"; }
+          if (signal?.aborted) { onToolOutput?.("phase", "【约束模式已中断】"); executor.rollback(); return result || "【约束模式已中断】"; }
 
           // If AI called expand_boundary, pause for human approval (TUI shows selection dialog)
           // Must check BEFORE iterationCompleted — expand approval takes priority over commit
@@ -952,7 +952,7 @@ export class Agent {
           const doneCount = iterationCount - (iterationSucceeded ? 0 : 1);
           const doneNote = doneCount > 0 ? `（已成功提交 ${doneCount} 轮迭代）` : "";
           onToolOutput?.("phase", `【约束模式已中断】${doneNote}`);
-          return finalResult || "(aborted)";
+          return finalResult || "【约束模式已中断】";
         }
         if (aiAskedUser) {
           onToolOutput?.("phase", `【约束模式暂停 — AI 需要你的输入，请在下方回复后继续】`);
@@ -976,7 +976,7 @@ export class Agent {
             const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
             onToolOutput?.("phase", `【约束模式暂停 — 连续 ${sameFailureStreak + 1} 次相同 gate 失败，AI 未做出有效修改。请给出更明确的指示后继续。】${doneNote}`);
             executor.rollback();
-            return finalResult || "(task incomplete)";
+            return finalResult || "【约束模式暂停 — gate 验证连续失败】";
           }
         }
         if (!iterationSucceeded) {
@@ -987,7 +987,7 @@ export class Agent {
             const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
             onToolOutput?.("phase", `【约束模式失败 — 第 ${iterationCount} 轮迭代 ${maxCompactRounds * executor.maxAttempts} 次尝试未通过 gates 验证，已尽最大努力】${doneNote}`);
             executor.rollback();
-            return finalResult || "(task incomplete)";
+            return finalResult || "【约束模式失败 — 迭代耗尽】";
           }
           // Compact context and retry same iteration — AI gets fresh context + accumulated failures
           const compactState = executor.buildCompactState("");
@@ -1049,7 +1049,7 @@ export class Agent {
         );
         if (doneSignals.test(lastAssistantText) && !calledLockIntent) {
           onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，AI 报告任务已全部交付】`);
-          return finalResult || "(task complete)";
+          return finalResult || "【约束模式完成】";
         }
 
         this.messages.push({
@@ -1058,7 +1058,7 @@ export class Agent {
         });
       }
       onToolOutput?.("phase", `【约束模式完成 — 共完成 ${iterationCount} 轮迭代，所有 sub-goal 已处理】`);
-      return finalResult || "(task complete)";
+      return finalResult || "【约束模式完成 — 达最大迭代上限】";
     } finally { this.constraintExecutor = null; }
   }
 
