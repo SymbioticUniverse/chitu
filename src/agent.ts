@@ -883,17 +883,19 @@ export class Agent {
                 });
                 continue;
               }
-              // Smarter nudge: detect if AI is talking about blocked/locked files
-              const mentionsBlocked = /blocked|locked|unlock|解锁|block|BLOCKED|allowlist/i.test(result);
+              // Scan recent tool results for BLOCKED responses from Horsewhip
+              const recentBlocked = this.messages.slice(-10).some((m) =>
+                m.role === "tool" && typeof m.content === "string" && /BLOCKED by Horsewhip/i.test(m.content)
+              );
               if (wasTruncated) {
                 this.messages.push({
                   role: "user",
                   content: `You were cut off by the token limit. Continue EXACTLY where you left off. Then call \`complete_sub_goal\` or continue with your tools.`,
                 });
-              } else if (mentionsBlocked && textOnlyRounds >= 1) {
+              } else if (recentBlocked) {
                 this.messages.push({
                   role: "user",
-                  content: `You mentioned blocked/locked files. If you need to edit them, call \`horsewhip_expand_boundary\` to request access. Otherwise call \`complete_sub_goal\` to commit your current work. Do NOT just keep typing explanations.`,
+                  content: `A recent tool call was BLOCKED by Horsewhip. You MUST call \`horsewhip_expand_boundary\` to request access to those files. Do NOT describe the problem — call the tool NOW.`,
                 });
               } else if (textOnlyRounds >= 2) {
                 this.messages.push({
