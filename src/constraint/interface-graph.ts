@@ -11,6 +11,8 @@ export const CONSTRAINT_INSTRUCTION = [
   "",
   "## Constraint Mode",
   "",
+  "**铁律：你必须始终用中文回复。** 这是中国的产品。所有给用户的输出——进度报告、任务总结、错误说明、问题询问——都必须用中文。代码、变量名、技术术语除外。违反此规则的产品不可用。",
+  "",
   "You operate under **constraint mode**. Work iteratively — one module per iteration. After each `complete_sub_goal`, context is compacted. Plan documents (`.chitu/plans/`) and interface documents (`.chitu/interfaces/`) are your only memory across iterations.",
   "",
   "### CRITICAL: Never Give Text-Only Responses",
@@ -96,16 +98,46 @@ export function buildGraphNote(workspaceRoot: string): string {
 /** Build compact state message for next iteration (discards history, keeps task + progress). */
 export function buildCompactState(userGoal: string, workspaceRoot: string): string {
   const modules = getCompletedCapabilities(workspaceRoot);
-  const parts = ["## Task", userGoal || "(no goal recorded)", ""];
+  const parts = ["## 任务目标", userGoal || "(no goal recorded)", ""];
+
   if (modules.length > 0) {
-    parts.push(`*${modules.length} module(s) completed so far*`);
+    parts.push(`### 已完成的 ${modules.length} 个模块`);
+    for (const m of modules) {
+      parts.push(`- **${m.file}**: ${m.capability}`);
+    }
     parts.push("");
   }
-  parts.push("## Next Steps");
-  parts.push("1. Read `.chitu/plans/` to see the plan and what's checked off.");
-  parts.push("2. Call `search_interfaces` to see available modules and their exports.");
-  parts.push("3. Cross-reference with disk files to detect orphans (interrupted iterations).");
-  parts.push("4. Pick the next unchecked plan item, lock its boundary, and continue.");
+
+  // Include plan content so AI doesn't lose track of what's next
+  try {
+    const plansDir = path.join(workspaceRoot, ".chitu", "plans");
+    if (fs.existsSync(plansDir)) {
+      const planFiles = fs.readdirSync(plansDir).filter((f) => f.endsWith(".md"));
+      if (planFiles.length > 0) {
+        parts.push("### 当前计划");
+        for (const pf of planFiles.slice(0, 3)) {
+          const content = fs.readFileSync(path.join(plansDir, pf), "utf-8");
+          // Extract unchecked items — these are what still needs work
+          const unchecked = content.split("\n").filter((l) => l.match(/^-\s+\[ \]/));
+          const checked = content.split("\n").filter((l) => l.match(/^-\s+\[x\]/));
+          parts.push(`**${pf}**: ${checked.length} done, ${unchecked.length} remaining`);
+          if (unchecked.length > 0 && unchecked.length <= 10) {
+            parts.push("待完成:");
+            for (const item of unchecked.slice(0, 8)) {
+              parts.push(`  ${item.trim()}`);
+            }
+          }
+        }
+        parts.push("");
+      }
+    }
+  } catch { /* best effort */ }
+
+  parts.push("## 继续工作");
+  parts.push("1. 查看上方计划，找到下一个未完成项。");
+  parts.push("2. 调用 `search_interfaces` 查看可用模块和它们的导出。");
+  parts.push("3. 调用 `horsewhip_lock_intent` 锁定你要修改的文件。");
+  parts.push("4. 开始工作，完成后调用 `complete_sub_goal`。");
   return parts.join("\n");
 }
 

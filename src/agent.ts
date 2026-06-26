@@ -163,9 +163,49 @@ export class Agent {
 
   compactMessages(compactState: string): void {
     const sysMsg = this.messages[0];
+
+    // Find a safe cut point that doesn't split tool-call/tool-result pairs
+    const keepCount = 10;
+    let start = Math.max(1, this.messages.length - keepCount);
+    while (start < this.messages.length) {
+      const cur = this.messages[start];
+      if (cur?.role === "assistant" && cur.tool_calls?.length) {
+        start++;
+        while (start < this.messages.length && this.messages[start]?.role === "tool") start++;
+      } else if (cur?.role === "tool") {
+        start++;
+      } else {
+        break;
+      }
+    }
+    const recent = this.messages.slice(start);
+
+    // Build a contextual summary from the discarded middle messages
+    const middle = this.messages.slice(1, start);
+    const lastActions: string[] = [];
+    for (let i = middle.length - 1; i >= 0 && lastActions.length < 8; i--) {
+      const m = middle[i];
+      if (m?.role === "assistant" && m.content) {
+        lastActions.unshift(`[Assistant]: ${getContentText(m.content).slice(0, 300)}`);
+      } else if (m?.role === "user" && m.content) {
+        lastActions.unshift(`[User]: ${getContentText(m.content).slice(0, 300)}`);
+      } else if (m?.role === "tool" && m.content) {
+        const toolText = getContentText(m.content);
+        if (toolText.length > 0) {
+          lastActions.unshift(`[Tool]: ${toolText.slice(0, 200)}`);
+        }
+      }
+    }
+
+    const summaryParts = [compactState];
+    if (lastActions.length > 0) {
+      summaryParts.push("", "## Recent Activity (before compaction)", lastActions.join("\n"));
+    }
+
+    const summary = summaryParts.join("\n");
     this.messages = sysMsg
-      ? [sysMsg, { role: "user" as const, content: compactState }]
-      : [{ role: "system" as const, content: "" }, { role: "user" as const, content: compactState }];
+      ? [sysMsg, { role: "user" as const, content: summary }, ...recent]
+      : [{ role: "system" as const, content: "" }, { role: "user" as const, content: summary }, ...recent];
   }
 
   getUsage(): { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } | null {
