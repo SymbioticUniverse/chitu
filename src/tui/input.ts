@@ -35,7 +35,6 @@ export interface InputDeps {
   cycleParadigm: () => void;
   detectImages: (task: string) => { cleanText: string; imagePaths: string[] };
   handleExpandSelect: (approved: boolean) => void;
-  cleanup: () => void;
 }
 
 // ── Handler collection ──
@@ -323,9 +322,9 @@ export function createInputHandlers(
           state.taskAbort?.abort();
           continue;
         }
+        // Same proven path as /quit: set running=false, let event loop call cleanup()
         state.running = false;
-        deps.cleanup();
-        process.exit(0);
+        return;
       }
       if (state.pendingRawInput[0] === "\x0c") {
         state.pendingRawInput = state.pendingRawInput.slice(1);
@@ -362,6 +361,7 @@ export function createInputHandlers(
         // Always handle /quit and /exit, even when busy
         const raw = state.inputBuffer.replace(/\r/g, "").trim();
         if (raw === "/quit" || raw === "/exit") {
+          if (state.busy) state.taskAbort?.abort();
           state.running = false;
           return;
         }
