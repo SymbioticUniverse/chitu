@@ -119,7 +119,7 @@ export class Agent {
       reasoningEffort: config.reasoningEffort,
     });
     this.model = config.model ?? this.provider.defaultModels[0] ?? "deepseek-v4-pro";
-    this.maxIterations = config.maxIterations ?? 100; // safety net; idle detection is the primary control
+    this.maxIterations = config.maxIterations ?? 20; // safety net; idle detection is the primary control
     this.explicitThinking = config.thinking;
     this.paradigm = config.paradigm ?? "constraint";
     this.paradigmState = { active: this.paradigm, resolved: this.paradigm };
@@ -422,7 +422,7 @@ export class Agent {
       let result;
       try {
         result = await this.provider.streamToMessage(
-          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined, max_tokens: 8192 },
+          { model: this.model, messages: this.messages, tools: toolDefs.length > 0 ? toolDefs : undefined },
           onToken, roundSignal, onReasoning,
         );
       } finally { clearTimeout(roundTimer); roundTimer = undefined; }
@@ -955,11 +955,13 @@ export class Agent {
                   executor.refreshContext();
                   executor.retryIteration();
                   iterationCount--;
+                  gateAttempts = 0;
                   gateFailures = [];
                   compactRounds = 0;
                   lastGateFailureHash = "";
                   sameFailureStreak = 0;
                   textOnlyRounds = 0;
+                  stillWorkingRounds = 0;
                   continue;
                 }
                 this.messages.push({
@@ -1012,6 +1014,7 @@ export class Agent {
               executor.refreshContext();
               executor.retryIteration();
               iterationCount--;
+              gateAttempts = 0;
               gateFailures = [];
               compactRounds = 0;
               lastGateFailureHash = "";
@@ -1094,10 +1097,13 @@ export class Agent {
             executor.refreshContext();
             executor.retryIteration();
             iterationCount--;
+            gateAttempts = 0;
             gateFailures = [];
             compactRounds = 0;
             lastGateFailureHash = "";
             sameFailureStreak = 0;
+            textOnlyRounds = 0;
+            stillWorkingRounds = 0;
             continue;
           }
         }
