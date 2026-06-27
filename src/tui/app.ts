@@ -1214,15 +1214,19 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     if (state.cleanupDone) return;
     state.cleanupDone = true;
 
+    // Save session before cleanup — user data persists across restarts
+    if (state.session && state.agent) {
+      try {
+        state.session.messages = state.agent.getMessages();
+        state.sessions.save(state.session);
+      } catch { /* best effort */ }
+    }
+
     state.taskAbort?.abort();
     state.taskAbort = null;
 
     if (state.agent) state.agent.abort();
 
-    // Delete TUI session — TUI is ephemeral
-    if (state.session) {
-      try { state.sessions.delete(state.session.id); } catch { /* best effort */ }
-    }
     // If running inside the Chitu project itself, purge runtime junk but keep installed tools
     try {
       const isChituProject = existsSync(join(workspaceRoot, "src", "agent.ts")) &&
@@ -1232,7 +1236,7 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         const chituDir = join(workspaceRoot, ".chitu");
         if (existsSync(chituDir)) {
           // Runtime junk to purge — sessions, plans, context, memory, logs
-          const transient = ["sessions", "plans", "memory", "context", "interfaces", "completions", "backups"];
+          const transient = ["plans", "memory", "context", "interfaces", "completions", "backups"];
           for (const name of transient) {
             const p = join(chituDir, name);
             try { if (existsSync(p)) rmSync(p, { recursive: true, force: true }); } catch { /* skip */ }
