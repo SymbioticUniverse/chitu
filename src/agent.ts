@@ -1,4 +1,6 @@
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { createProvider } from "./providers/factory.js";
 import type { AIProvider, ProviderName } from "./providers/types.js";
 import { getAllToolDefs, getAllToolHandlers } from "./tools/index.js";
@@ -161,8 +163,20 @@ export class Agent {
   restoreMessages(messages: Message[]): void { this.messages = messages; }
   getMessages(): Message[] { return this.messages; }
 
+  // ── Debug log ──
+
+  private constraintLog(msg: string): void {
+    try {
+      const logDir = path.join(this.workspaceRoot, ".chitu");
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.sss
+      fs.appendFileSync(path.join(logDir, "constraint.log"), `[${ts}] ${msg}\n`, "utf-8");
+    } catch { /* never crash for logging */ }
+  }
+
   compactMessages(compactState: string): void {
     const sysMsg = this.messages[0];
+    this.constraintLog(`compactMessages: before=${this.messages.length} msgs`);
 
     // Find a safe cut point that doesn't split tool-call/tool-result pairs
     const keepCount = 10;
@@ -206,6 +220,7 @@ export class Agent {
     this.messages = sysMsg
       ? [sysMsg, { role: "user" as const, content: summary }, ...recent]
       : [{ role: "system" as const, content: "" }, { role: "user" as const, content: summary }, ...recent];
+    this.constraintLog(`compactMessages: after=${this.messages.length} msgs (kept ${recent.length} recent, discarded ${middle.length})`);
   }
 
   getUsage(): { promptTokens: number; completionTokens: number; totalTokens: number; cachedTokens: number } | null {
@@ -806,8 +821,10 @@ export class Agent {
         // Inner loop: keep running until sub-goal done, user input needed, or gates exhaust retries.
         // "Still working" (no complete_sub_goal yet) does NOT consume a gate attempt.
         while (gateAttempts < executor.maxAttempts) {
+          const t0 = Date.now();
           const result = await this.run(onToken, signal, onToolOutput, onCompress, onReasoning);
-          if (signal?.aborted) { onToolOutput?.("phase", "【约束模式已中断】"); executor.rollback(); return result || "【约束模式已中断】"; }
+          this.constraintLog(`run() → ${Date.now() - t0}ms, msgs=${this.messages.length}, tok=${this.lastUsage?.totalTokens ?? "?"}, finish=${this.lastFinishReason ?? "?"}`);
+          if (signal?.aborted) { this.constraintLog("signal aborted"); onToolOutput?.("phase", "【约束模式已中断】"); executor.rollback(); return result || "【约束模式已中断】"; }
 
           // If AI called expand_boundary, pause for human approval (TUI shows selection dialog)
           // Must check BEFORE iterationCompleted — expand approval takes priority over commit
@@ -895,6 +912,7 @@ export class Agent {
             const lastAssistant = [...this.messages].reverse().find((m) => m.role === "assistant");
             const hadToolCalls = lastAssistant?.tool_calls && lastAssistant.tool_calls.length > 0;
             if (!hadToolCalls) {
+              this.constraintLog(`text-only #${textOnlyRounds + 1} (finish=${this.lastFinishReason ?? "?"}, msgs=${this.messages.length})`);
               // Empty response is also a signal to restart
               if (!result) {
                 textOnlyRounds++;
@@ -917,7 +935,9 @@ export class Agent {
                 if (!hasChanges) {
                   // Auto-restart: compact context, reset, and keep fighting
                   autoRestartCount++;
+                  this.constraintLog(`auto-restart #${autoRestartCount}: text-only exhaustion (${textOnlyRounds} rounds, no changes)`);
                   if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+                    this.constraintLog("auto-restart LIMIT reached, surrendering");
                     executor.rollback();
                     onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】`);
                     return finalResult || "【约束模式暂停 — 自动重启耗尽】";
@@ -972,7 +992,9 @@ export class Agent {
             stillWorkingRounds++;
             if (stillWorkingRounds >= 4) {
               autoRestartCount++;
+              this.constraintLog(`auto-restart #${autoRestartCount}: still-working (${stillWorkingRounds} rounds without complete_sub_goal)`);
               if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+                this.constraintLog("auto-restart LIMIT reached, surrendering");
                 executor.rollback();
                 onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】`);
                 return finalResult || "【约束模式暂停 — 自动重启耗尽】";
@@ -1048,7 +1070,9 @@ export class Agent {
             lastGateFailureHash = "";
           } else {
             autoRestartCount++;
+            this.constraintLog(`auto-restart #${autoRestartCount}: same-failure streak (${sameFailureStreak + 1} identical gate failures, no changes)`);
             if (autoRestartCount >= MAX_AUTO_RESTARTS) {
+              this.constraintLog("auto-restart LIMIT reached, surrendering");
               const doneCount = iterationCount - 1;
               const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
               onToolOutput?.("phase", `【约束模式暂停 — 已自动重启 ${autoRestartCount} 次，达上限。请给出指示后继续。】${doneNote}`);
@@ -1098,6 +1122,7 @@ export class Agent {
         }
 
         // Reset failure tracking for next iteration
+        this.constraintLog(`iteration ${iterationCount} SUCCEEDED (${executor.completedIterations} total sub-goals done)`);
         gateFailures = [];
         compactRounds = 0;
         lastGateFailureHash = "";
