@@ -577,6 +577,23 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
 
     if (task.startsWith("/resume ")) {
       const idPart = task.slice(8).trim();
+      if (!idPart) {
+        // "/resume " with trailing space → list sessions (same as /resume)
+        const all = state.sessions.list();
+        if (all.length === 0) {
+          printAssistantBlock("No session history.", scrollRegionBottom);
+        } else {
+          const recent = all.slice(0, 8);
+          const lines = recent.map((s) => {
+            const shortId = s.id.slice(0, 8);
+            const date = new Date(s.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+            return `  ${shortId}  ${date}  ${s.task.slice(0, 50)}`;
+          }).join("\n");
+          printAssistantBlock(`Session history (type /resume <id> to restore):\n${lines}`, scrollRegionBottom);
+        }
+        drawPrompt();
+        return;
+      }
       const all = state.sessions.list();
       const match = all.find((s) => s.id.startsWith(idPart));
       if (!match) {

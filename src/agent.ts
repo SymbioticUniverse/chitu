@@ -26,8 +26,6 @@ import type {
   Paradigm,
   ParadigmState,
 } from "./types.js";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { MCPLoader } from "./mcp/loader.js";
 import { logger } from "./logger.js";
 
