@@ -820,6 +820,18 @@ export class Agent {
         let stillWorkingRounds = 0;          // consecutive "still working" rounds without gate attempt
         let textOnlyRounds = 0;             // consecutive text-only (no tool call) responses — auto-restart
 
+        // Single source of truth for retry state reset.
+        // Called at normal iteration start AND after every auto-restart.
+        const resetRetryState = () => {
+          gateAttempts = 0;
+          stillWorkingRounds = 0;
+          textOnlyRounds = 0;
+          gateFailures = [];
+          compactRounds = 0;
+          lastGateFailureHash = "";
+          sameFailureStreak = 0;
+        };
+
         // Dynamic limits: tighten as more sub-goals complete
         executor.maxAttempts = executor.completedIterations < 2 ? 3 : 2;
         const maxCompactRounds = executor.completedIterations < 2 ? 3 :
@@ -955,13 +967,7 @@ export class Agent {
                   executor.refreshContext();
                   executor.retryIteration();
                   iterationCount--;
-                  gateAttempts = 0;
-                  gateFailures = [];
-                  compactRounds = 0;
-                  lastGateFailureHash = "";
-                  sameFailureStreak = 0;
-                  textOnlyRounds = 0;
-                  stillWorkingRounds = 0;
+                  resetRetryState();
                   continue;
                 }
                 this.messages.push({
@@ -1014,13 +1020,7 @@ export class Agent {
               executor.refreshContext();
               executor.retryIteration();
               iterationCount--;
-              gateAttempts = 0;
-              gateFailures = [];
-              compactRounds = 0;
-              lastGateFailureHash = "";
-              sameFailureStreak = 0;
-              stillWorkingRounds = 0;
-              textOnlyRounds = 0;
+              resetRetryState();
               continue;
             }
             this.messages.push({
@@ -1097,13 +1097,7 @@ export class Agent {
             executor.refreshContext();
             executor.retryIteration();
             iterationCount--;
-            gateAttempts = 0;
-            gateFailures = [];
-            compactRounds = 0;
-            lastGateFailureHash = "";
-            sameFailureStreak = 0;
-            textOnlyRounds = 0;
-            stillWorkingRounds = 0;
+            resetRetryState();
             continue;
           }
         }
