@@ -176,7 +176,8 @@ export class Agent {
     const sysMsg = this.messages[0];
     this.constraintLog(`compactMessages: before=${this.messages.length} msgs`);
 
-    // Find a safe cut point that doesn't split tool-call/tool-result pairs
+    // Find a safe cut point that doesn't split tool-call/tool-result pairs.
+    // But never discard ALL recent messages — amnesia is worse than splitting a pair.
     const keepCount = 10;
     let start = Math.max(1, this.messages.length - keepCount);
     while (start < this.messages.length) {
@@ -188,6 +189,14 @@ export class Agent {
         start++;
       } else {
         break;
+      }
+    }
+    // Fallback: if we skipped everything, keep at least the last 2 messages
+    if (start >= this.messages.length) {
+      start = Math.max(1, this.messages.length - 2);
+      // Don't start mid-pair: if first kept message is a tool result, include its call
+      if (start < this.messages.length && this.messages[start]?.role === "tool") {
+        start = Math.max(1, start - 1);
       }
     }
     const recent = this.messages.slice(start);
@@ -1236,7 +1245,7 @@ export class Agent {
     const systemMsg = this.messages[0];
     const keepCount = 8;
 
-    let start = this.messages.length - keepCount;
+    let start = Math.max(1, this.messages.length - keepCount);
     while (start < this.messages.length) {
       const cur = this.messages[start];
       if (cur?.role === "assistant" && cur.tool_calls?.length) {
@@ -1244,6 +1253,13 @@ export class Agent {
         while (start < this.messages.length && this.messages[start]?.role === "tool") start++;
       } else if (cur?.role === "tool") { start++; }
       else { break; }
+    }
+    // Fallback: never discard everything
+    if (start >= this.messages.length) {
+      start = Math.max(1, this.messages.length - 2);
+      if (start < this.messages.length && this.messages[start]?.role === "tool") {
+        start = Math.max(1, start - 1);
+      }
     }
 
     // Archive removed messages
