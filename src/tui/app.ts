@@ -988,6 +988,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
     let watchdogAbortTimer: ReturnType<typeof setTimeout> | undefined;
     let watchdogFired = false;
     const resetWatchdog = () => {
+      // Watchdog is only for constraint mode — AI must make continuous progress.
+      // In manual/appraise mode the AI naturally waits for user input after finishing.
+      if (state.tuiParadigm !== "constraint") return;
       if (watchdogTimer) clearTimeout(watchdogTimer);
       if (watchdogAbortTimer) clearTimeout(watchdogAbortTimer);
       watchdogFired = false;
