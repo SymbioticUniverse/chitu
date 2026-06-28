@@ -133,6 +133,7 @@ export function getParadigmPrompt(paradigm: Paradigm): string {
         "",
         "**Rules:**",
         "- Execute exactly what the user asks. No more, no less.",
+        "- **直接动手，不要先描述你打算怎么做。** 用户能看到你的工具调用，不需要你预告。用工具做完后再简短总结。长篇文字说明 = 浪费时间。",
         "- **Do not scan the project upfront.** Only read files when the task specifically requires it.",
         "- **DO NOT use any Horsewhip MCP tools** (horsewhip_lock_*, horsewhip_expand_*, horsewhip_get_*, horsewhip_task_complete, horsewhip_auto_commit, etc.). These are for Constraint mode. Using them in Manual mode blocks the user's work.",
         "- Read, write, edit, delete — all file operations are allowed as instructed by the user.",
