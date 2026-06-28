@@ -21,13 +21,7 @@ function isProjectDirectory(dir: string): boolean {
   for (const m of markers) {
     if (existsSync(join(dir, m))) return true;
   }
-  // Also consider directories with >3 files (might have hidden config files)
-  try {
-    const entries = readdirSync(dir).filter((e) => !e.startsWith("."));
-    return entries.length > 3;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 // ── Global error handling ──
