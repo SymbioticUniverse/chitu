@@ -184,7 +184,7 @@ export function createWriteTools(ctx: ToolContext): Record<string, ToolHandler> 
         const child = spawn(cmd, {
           shell: true,
           cwd: workdir,
-          stdio: ["pipe", "pipe", "pipe"],
+          stdio: ["ignore", "pipe", "pipe"],
           env: { ...process.env, ...env },
         });
 
