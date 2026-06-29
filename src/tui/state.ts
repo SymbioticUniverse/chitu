@@ -147,7 +147,6 @@ export interface TUIState {
   // config flags
   skipGuard: boolean;
   dev: boolean;
-  yunchang: boolean;
   thinking: boolean;
   paradigmArg: string | undefined;
   provider: string | undefined;
@@ -166,7 +165,6 @@ export function createTUIState(
   config: {
     skipGuard?: boolean;
     dev?: boolean;
-    yunchang?: boolean;
     paradigm?: string;
     thinking?: boolean;
     provider?: string;
@@ -243,7 +241,6 @@ export function createTUIState(
 
     skipGuard: config.skipGuard ?? false,
     dev: config.dev ?? false,
-    yunchang: config.yunchang ?? false,
     thinking: config.thinking ?? false,
     paradigmArg: config.paradigm,
     provider: config.provider,

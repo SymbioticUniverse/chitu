@@ -66,7 +66,6 @@ export interface AgentConfig {
   thinking?: boolean;
   reasoningEffort?: "low" | "medium" | "high" | "max";
   paradigm?: Paradigm;
-  yunchang?: boolean;
 }
 
 export class Agent {
@@ -92,9 +91,9 @@ export class Agent {
   private soulRoundCounter = 0;
   private baselineTokens = 0;
   private explicitThinking: boolean | undefined;
+  private explicitModel = false;
   private paradigm: Paradigm = "ride";
   private paradigmState: ParadigmState = { active: "ride", resolved: "ride" };
-  private yunchang = false;
   constraintExecutor: ConstraintExecutor | null = null;
   private pendingExpandRequest: { paths: string[]; reason: string } | null = null;
   pendingExpandApproved: boolean | null = null;
@@ -119,11 +118,11 @@ export class Agent {
       reasoningEffort: config.reasoningEffort,
     });
     this.model = config.model ?? this.provider.defaultModels[0] ?? "deepseek-v4-pro";
+    this.explicitModel = config.model !== undefined;
     this.maxIterations = config.maxIterations ?? 20; // safety net; idle detection is the primary control
     this.explicitThinking = config.thinking;
     this.paradigm = config.paradigm ?? "constraint";
     this.paradigmState = { active: this.paradigm, resolved: this.paradigm };
-    this.yunchang = config.yunchang ?? false;
     this.mcpLoader = mcpLoader;
     this.horsewhipGuard = horsewhipGuard;
     this.rateLimiter = new RateLimiter();
@@ -370,6 +369,7 @@ export class Agent {
     this.baselineTokens = estimateTokens(getContentText(sysMsg?.content)) + estimateTokens(JSON.stringify(toolDefs));
 
     // Model & thinking selection — paradigm-aware
+    // Ask (appraise) → flash + no thinking. Everything else → pro + thinking with rotation on failure.
     if (this.taskIntent === "new_feature") {
       this.taskIntent = detectTaskIntent(getContentText(this.messages.find((m) => m.role === "user")?.content));
     }
@@ -379,14 +379,10 @@ export class Agent {
       this.provider.setThinking(this.explicitThinking);
     } else if (resolved === "appraise") {
       this.provider.setThinking(false);
-    } else if (resolved === "spur") {
-      this.provider.setThinking(false);
+      if (!this.explicitModel) this.model = "deepseek-v4-flash";
     } else {
-      if (this.guard && this.taskIntent !== "query") {
-        this.provider.setThinking(true);
-      } else {
-        this.provider.setThinking(false);
-      }
+      this.provider.setThinking(true);
+      if (!this.explicitModel) this.model = "deepseek-v4-pro";
     }
 
     let finalResponse = "";
@@ -438,7 +434,7 @@ export class Agent {
           break;
         }
         consecutiveTimeouts++;
-        if (consecutiveTimeouts > MAX_TIMEOUTS) { finalResponse = `(连续 ${MAX_TIMEOUTS} 轮超时，任务中断)`; this.writeCheckpoint("timeout"); break; }
+        if (consecutiveTimeouts > MAX_TIMEOUTS) { this.constraintLog(`EXIT: ${consecutiveTimeouts} consecutive stream timeouts`); finalResponse = `(连续 ${MAX_TIMEOUTS} 轮超时，任务中断)`; this.writeCheckpoint("timeout"); break; }
         if (result.content) this.messages.push({ role: "assistant", content: result.content });
         this.messages.push({ role: "user", content: `(上一轮思考超过 ${ROUND_TIMEOUT_MS / 1000}s 超时。请从断点继续，直接完成任务，不要重复已做工作。)` });
         continue;
@@ -448,7 +444,7 @@ export class Agent {
       // Empty response
       if (!result.content && result.toolCalls.length === 0) {
         emptyResponseCount++;
-        if (emptyResponseCount >= 3) { finalResponse = "(empty response after 3 retries)"; this.writeCheckpoint("empty_response"); break; }
+        if (emptyResponseCount >= 3) { this.constraintLog(`EXIT: ${emptyResponseCount} consecutive empty responses`); finalResponse = "(empty response after 3 retries)"; this.writeCheckpoint("empty_response"); break; }
         this.messages.push({ role: "user", content: "Continue. You are not done. Call the next tool or complete_sub_goal." });
         continue;
       }
@@ -459,7 +455,31 @@ export class Agent {
       if (result.reasoning) assistantMsg.reasoning_content = result.reasoning;
       this.messages.push(assistantMsg);
 
-      if (result.toolCalls.length === 0) { finalResponse = result.content; this.lastFinishReason = result.finishReason; break; }
+      if (result.toolCalls.length === 0) {
+        // Constraint/manual/spur: text-only doesn't mean done — keep fighting.
+        // Constraint uses complete_sub_goal as the official stop signal.
+        // Manual/spur treat clear completion keywords as the stop signal.
+        // Appraise/ride: text-only = task is finished.
+        const resolved = this.paradigmState.resolved;
+        if (resolved === "constraint" || resolved === "manual" || resolved === "spur") {
+          if (resolved !== "constraint" && /(done|完成|好了|fixed|已修复|已解决|completed|finished|总结|summar)/i.test(result.content || "")) {
+            this.constraintLog(`run() EXIT: ${resolved} completion signal`);
+            finalResponse = result.content;
+            this.lastFinishReason = result.finishReason;
+            break;
+          }
+          this.constraintLog(`run() text-only → nudge (${resolved}, finish=${this.lastFinishReason ?? "?"})`);
+          const nudge = resolved === "constraint"
+            ? "You responded with text only. If the task is complete, call `complete_sub_goal`. Otherwise, call your tools and continue working. Do not stop here."
+            : "If the task is complete, say \"Done\" or \"已完成\". If not, call your tools and keep working.";
+          this.messages.push({ role: "user", content: nudge });
+          continue;
+        }
+        this.constraintLog(`run() EXIT: text-only, finish=${this.lastFinishReason ?? "?"}`);
+        finalResponse = result.content;
+        this.lastFinishReason = result.finishReason;
+        break;
+      }
 
       // Wire tool progress to watchdog reset — long-running tools (run_shell, compile) stay alive
       this.ctx.onProgress = onToolOutput
@@ -690,7 +710,7 @@ export class Agent {
     onReasoning?: (text: string) => void,
   ): Promise<string> {
     const executor = new TargetExecutor(this, this.workspaceRoot);
-    return await executor.execute({ onToken, signal, onToolOutput, onCompress, onReasoning, yunchang: this.yunchang });
+    return await executor.execute({ onToken, signal, onToolOutput, onCompress, onReasoning });
   }
 
   // ── Paradigm: Constraint ──
@@ -1107,6 +1127,7 @@ export class Agent {
             // Dynamic: early sub-goals get more retries, later sub-goals fewer
             const doneCount = iterationCount - 1;
             const doneNote = doneCount > 0 ? `（前 ${doneCount} 轮迭代已成功提交）` : "";
+            this.constraintLog(`EXIT: compaction rounds exhausted (${compactRounds}/${maxCompactRounds}, ${iterationCount} iterations, ${executor.completedIterations} done)`);
             onToolOutput?.("phase", `【约束模式失败 — 第 ${iterationCount} 轮迭代 ${maxCompactRounds * executor.maxAttempts} 次尝试未通过 gates 验证，已尽最大努力】${doneNote}`);
             executor.rollback();
             return finalResult || "【约束模式失败 — 迭代耗尽】";
@@ -1326,6 +1347,14 @@ export class Agent {
     if (!t) return "chat";
     if (/^\/\w+/.test(t)) return "chat";
 
+    // Continuation signals are always task — no LLM call needed.
+    // This is the TUI auto-continue path; classifying it via LLM adds
+    // unnecessary latency and a failure mode (API error → defaults to "chat").
+    if (/^(继续|continue|go\s*ahead|proceed|ok\s*start|开始吧|开工|干活|重启|restart|resume)\s*$/i.test(t)) return "task";
+
+    // Short user messages (≤3 chars) that aren't continuation signals are likely chat
+    if (t.length <= 3 && !/修|改|写|加|建|创|fix|add|run|do|go/i.test(t)) return "chat";
+
     try {
       const result = await this.provider.chat({
         model: this.model,
@@ -1337,11 +1366,13 @@ export class Agent {
         temperature: 0,
       });
       const label = (result.choices[0]?.message?.content ?? "").trim().toLowerCase();
-      if (/\bchat\b|聊天|对话|提问|问题|讨论|问答|咨询|闲聊/i.test(label)) return "chat";
-      if (/\btask\b|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
-      return "chat";
+      if (/\b(chat|task|continue)\b|聊天|对话|提问|问题|讨论|问答|咨询|闲聊/i.test(label)) return "chat";
+      if (/\b(task|continue)\b|任务|执行|工作|编码|实现|继续/i.test(label)) return "task";
+      // In constraint mode, default to "task" — safer to run the loop than skip it
+      return this.paradigmState.resolved === "constraint" ? "task" : "chat";
     } catch {
-      return "chat";
+      // In constraint mode, default to "task" — an API error shouldn't stop the loop
+      return this.paradigmState.resolved === "constraint" ? "task" : "chat";
     }
   }
 }

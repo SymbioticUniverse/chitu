@@ -220,31 +220,23 @@ export abstract class OpenAICompatProvider implements AIProvider {
     const STREAM_IDLE_TIMEOUT_MS = 600_000; // 10 min — DeepSeek can pause several minutes mid-response during deep reasoning
     let lastDataAt = Date.now();
 
-    const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (signal?.aborted) {
-          reader.cancel().catch(() => {});
-          return { done: true, value: undefined };
-        }
-        const elapsed = Date.now() - lastDataAt;
-        if (elapsed >= STREAM_IDLE_TIMEOUT_MS) {
-          return { done: true, value: undefined };
-        }
-        const remaining = STREAM_IDLE_TIMEOUT_MS - elapsed;
-        // Poll every second — simpler than AbortController per read
-        const result = await Promise.race([
-          reader.read(),
-          new Promise<{ timedOut: true }>((resolve) => setTimeout(() => resolve({ timedOut: true }), Math.min(remaining, 1000))),
-        ]);
-        if ("timedOut" in result && result.timedOut) continue; // re-check elapsed
-        return result as ReadableStreamReadResult<Uint8Array>;
+    // Idle watchdog: cancel reader if no data for too long.
+    // Uses setInterval instead of racing reader.read() to avoid
+    // concurrent reads on the same reader, which corrupt its state
+    // and cause reader.releaseLock() to hang at stream end.
+    const idleWatchdog = setInterval(() => {
+      if (Date.now() - lastDataAt >= STREAM_IDLE_TIMEOUT_MS) {
+        reader.cancel().catch(() => {});
       }
-    };
+    }, 30_000);
 
     try {
       while (true) {
-        const { done, value } = await readWithTimeout();
+        if (signal?.aborted) {
+          reader.cancel().catch(() => {});
+          return;
+        }
+        const { done, value } = await reader.read();
         if (done) break;
         lastDataAt = Date.now();
 
@@ -303,6 +295,7 @@ export abstract class OpenAICompatProvider implements AIProvider {
         }
       }
     } finally {
+      clearInterval(idleWatchdog);
       reader.releaseLock();
     }
   }
@@ -323,8 +316,23 @@ export abstract class OpenAICompatProvider implements AIProvider {
       { id: string; name: string; args: string }
     > = new Map();
 
+    // Hard wall-clock timeout — cannot be defeated by intermittent data flow.
+    // DeepSeek may send reasoning chunks every few minutes that reset the idle
+    // timer in readWithTimeout but never complete.
+    const HARD_TIMEOUT_MS = 480_000; // 8 min absolute max per stream
+    const PROGRESS_TIMEOUT_MS = 300_000; // 5 min without meaningful output
+    const hardCtrl = new AbortController();
+    const hardTimer = setTimeout(() => hardCtrl.abort(), HARD_TIMEOUT_MS);
+    let lastMeaningful = Date.now();
+    const progressTimer = setInterval(() => {
+      if (Date.now() - lastMeaningful >= PROGRESS_TIMEOUT_MS) hardCtrl.abort();
+    }, 30_000); // check every 30s
+    const effectiveSignal = signal
+      ? AbortSignal.any([signal, hardCtrl.signal])
+      : hardCtrl.signal;
+
     try {
-      for await (const event of this.stream(req, signal)) {
+      for await (const event of this.stream(req, effectiveSignal)) {
         switch (event.type) {
           case "reasoning":
             reasoning += event.content;
@@ -333,8 +341,10 @@ export abstract class OpenAICompatProvider implements AIProvider {
           case "text":
             content += event.content;
             onToken?.(event.content);
+            lastMeaningful = Date.now();
             break;
           case "tool_delta": {
+            lastMeaningful = Date.now();
             const d = event.toolDelta;
             const existing = toolCalls.get(d.index) ?? { id: "", name: "", args: "" };
             if (d.id) existing.id = d.id;
@@ -348,16 +358,20 @@ export abstract class OpenAICompatProvider implements AIProvider {
             break;
           case "done":
           case "finish":
+            lastMeaningful = Date.now();
             if (event.type === "finish") finishReason = (event as any).reason;
             break;
         }
       }
     } catch (err: unknown) {
-      if (isAbortError(err) || signal?.aborted) {
+      if (isAbortError(err) || signal?.aborted || hardCtrl.signal.aborted) {
         aborted = true;
       } else {
         throw err;
       }
+    } finally {
+      clearTimeout(hardTimer);
+      clearInterval(progressTimer);
     }
 
     return {

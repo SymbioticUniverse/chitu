@@ -186,6 +186,7 @@ export function createWriteTools(ctx: ToolContext): Record<string, ToolHandler> 
           cwd: workdir,
           stdio: ["ignore", "pipe", "pipe"],
           env: { ...process.env, ...env },
+          detached: true,
         });
 
         const MAX_OUTPUT = 500_000;
@@ -202,7 +203,7 @@ export function createWriteTools(ctx: ToolContext): Record<string, ToolHandler> 
           if (resolved) return; resolved = true;
           if (stallTimer) clearTimeout(stallTimer);
           if (globalTimer) clearTimeout(globalTimer);
-          try { child.kill("SIGKILL"); } catch { /* already dead */ }
+          try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already dead */ }
           const suffix = truncated ? "\n[output truncated at 500KB]" : "";
           const out = [stdout, stderr ? `STDERR:\n${stderr}` : ""].filter(Boolean).join("\n");
           const body = stalled ? (out || "(stalled — no output for 60s)") :

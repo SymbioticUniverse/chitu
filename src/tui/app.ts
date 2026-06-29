@@ -41,7 +41,6 @@ import {
 export interface TUIConfig {
   skipGuard?: boolean;
   dev?: boolean;
-  yunchang?: boolean;
   paradigm?: string;
   thinking?: boolean;
   provider?: ProviderName;
@@ -616,7 +615,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           apiKey: resolveApiKey(state.apiKey),
           baseUrl: state.baseUrl,
           thinking: state.thinking,
-          yunchang: state.yunchang,
         });
         state.agent.setParadigm(state.tuiParadigm);
         state.agent.restoreMessages(state.session.messages);
@@ -762,7 +760,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
                 apiKey: resolveApiKey(state.apiKey),
                 baseUrl: state.baseUrl,
                 thinking: state.thinking,
-                yunchang: state.yunchang,
               });
               state.agent.setParadigm("ride");
               state.agent.setTask(match.goal);
@@ -774,7 +771,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
                   apiKey: resolveApiKey(state.apiKey),
                   baseUrl: state.baseUrl,
                   thinking: state.thinking,
-                  yunchang: state.yunchang,
                 });
               }
               state.agent.setParadigm("ride");
@@ -844,7 +840,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         apiKey: resolveApiKey(state.apiKey),
         baseUrl: state.baseUrl,
         thinking: state.thinking,
-        yunchang: state.yunchang,
       });
       state.agent.setParadigm(state.tuiParadigm);
       state.agent.setTask(task, state.pendingImages);
@@ -857,7 +852,6 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           apiKey: resolveApiKey(state.apiKey),
           baseUrl: state.baseUrl,
           thinking: state.thinking,
-          yunchang: state.yunchang,
         });
       }
       state.agent.setParadigm(state.tuiParadigm);
@@ -1136,9 +1130,9 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
         queuedNext = { task: cleanText };
       }
 
-      // YunChang auto-continuation + auto-commit
+      // Auto-continuation for all modes except ask (appraise is read-only Q&A)
       if (!queuedNext) {
-      if (state.yunchang && lastResponse && state.agent) {
+      if (state.tuiParadigm !== "appraise" && lastResponse && state.agent) {
         const subGoalDone = /Sub-goal\s+\S+\s+complete/i.test(lastResponse);
         const targetDone = /Target Complete/i.test(lastResponse);
         if (subGoalDone || targetDone) {
@@ -1157,10 +1151,32 @@ export async function startTUI(config: TUIConfig = {}): Promise<void> {
           }
         }
 
-        const shouldContinue = lastResponse.includes("Type anything to continue")
+        // Auto-continue on explicit "Type anything to continue" (e.g. after ask_user)
+        const explicitContinue = lastResponse.includes("Type anything to continue")
           && !lastResponse.includes("All sub-goals done");
+        // Auto-restart on constraint exhaustion — AI hit internal retry limit but task isn't done
+        const constraintRetry = state.tuiParadigm === "constraint"
+          && /【约束模式(暂停|失败)/.test(lastResponse)
+          && !lastResponse.includes("All sub-goals done");
+        // Manual/spur/ride: always auto-continue unless AI clearly signals done
+        const isDone = /All sub-goals done|task completed|全部完成|已完成/i.test(lastResponse);
+        const generalContinue = (state.tuiParadigm === "manual" || state.tuiParadigm === "spur" || state.tuiParadigm === "ride")
+          && !isDone;
+        const shouldContinue = explicitContinue || constraintRetry || generalContinue;
         if (shouldContinue && state.autoContinueCount < MAX_AUTO_CONTINUE) {
           state.autoContinueCount++;
+          if (constraintRetry) {
+            // Inject a nudge so the AI knows it was restarted
+            const agent = state.agent;
+            if (agent) {
+              const msgs = agent.getMessages();
+              msgs.push({
+                role: "user" as const,
+                content: "【约束循环重试耗尽后自动重启】之前的方法走进了死胡同。换个思路，重新审视任务和代码，尝试不同的策略。不要重复之前的错误。",
+              });
+            }
+            write(color.dim("  [auto] constraint restart\n"));
+          }
           setImmediate(() => handleTask("continue"));
         } else {
           state.autoContinueCount = 0;

@@ -17,8 +17,6 @@ export interface TargetExecOptions {
   onToolOutput?: (toolName: string, output: string) => void;
   onCompress?: (phase: string, progress: number) => void;
   onReasoning?: (text: string) => void;
-  /** Yunchang mode: skip plan confirmation, auto-proceed to execute. */
-  yunchang?: boolean;
 }
 
 const MAX_CLARIFY_ROUNDS = 12;
@@ -32,8 +30,7 @@ export class TargetExecutor {
     this.workspaceRoot = workspaceRoot;
   }
 
-  /** Main entry. Advances the Target state machine by one step.
-   *  In yunchang mode: auto-loops through all phases until done, commit is the flow gate. */
+  /** Main entry. Advances the Target state machine by one step. */
   async execute(opts: TargetExecOptions): Promise<string> {
     const guard = this.agent.getGuard();
     if (guard) guard.unlock();

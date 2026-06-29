@@ -92,7 +92,6 @@ function parseArgs(argv: string[]): Args {
         args.manual = true;
         break;
       case "--auto":
-      case "--yunchang":
         args.auto = true;
         break;
       case "--constraint":
@@ -208,7 +207,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: (args.paradigm as Paradigm | undefined) ?? "ride",
           thinking: args.thinking,
-          yunchang: args.auto,
+
         }
       );
 
@@ -330,7 +329,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: effectiveParadigm,
           thinking: args.thinking,
-          yunchang: args.auto,
+
         }
       );
 
@@ -431,7 +430,7 @@ export async function main(argv: string[]): Promise<void> {
           baseUrl: args.baseUrl,
           paradigm: effectiveParadigm,
           thinking: args.thinking,
-          yunchang: args.auto,
+
         }
       );
 
